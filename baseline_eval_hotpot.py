@@ -189,13 +189,13 @@ def main():
             "model": MODEL_ID,
             "context_tokens": ctx_len,
             "n_requests": math.ceil(len(examples)/BATCH_SIZE),
-            "latency_ms_p50": round(percentile(per_req_lat, 0.50), 2),
-            "latency_ms_p95": round(percentile(per_req_lat, 0.95), 2),
-            "ms_per_token_p50": round(percentile(per_tok_lat, 0.50), 2),
-            "ms_per_token_p95": round(percentile(per_tok_lat, 0.95), 2),
-            "tok_per_s_p50": round(percentile(per_req_tokps, 0.50), 2),
-            "tok_per_s_p95": round(percentile(per_req_tokps, 0.95), 2),
-            "peak_gpu_mem_gb_p95": round(percentile(per_req_peak, 0.95), 2),
+            "latency_ms_p50": round(percentile(per_req_lat, 0.50), 2),          # Median end-to-end latency per request (prefill + decode)
+            "latency_ms_p95": round(percentile(per_req_lat, 0.95), 2),          # “tail latency” — 95% of requests finished within
+            "ms_per_token_p50": round(percentile(per_tok_lat, 0.50), 2),        # Median decoding speed: it took ~31 ms to generate one token
+            "ms_per_token_p95": round(percentile(per_tok_lat, 0.95), 2),        # 95th percentile decoding speed
+            "tok_per_s_p50": round(percentile(per_req_tokps, 0.50), 2),         # Equivalent throughput in tokens per second
+            "tok_per_s_p95": round(percentile(per_req_tokps, 0.95), 2),         # 95th percentile tokens per second
+            "peak_gpu_mem_gb_p95": round(percentile(per_req_peak, 0.95), 2),    # 95th percentile peak GPU memory usage
         }
         print(json.dumps(ctx_summary, indent=2))
 
