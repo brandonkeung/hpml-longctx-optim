@@ -1,0 +1,23 @@
+[
+  {
+    "context_tokens": 512,
+    "latency_s": 2.9351,
+    "gen_tokens": 64,
+    "throughput_tok_per_s": 21.8,
+    "peak_gpu_mem_gb": 13.53
+  },
+  {
+    "context_tokens": 2048,
+    "latency_s": 1.8446,
+    "gen_tokens": 64,
+    "throughput_tok_per_s": 34.7,
+    "peak_gpu_mem_gb": 13.58
+  },
+  {
+    "context_tokens": 8192,
+    "latency_s": 2.1492,
+    "gen_tokens": 64,
+    "throughput_tok_per_s": 29.78,
+    "peak_gpu_mem_gb": 14.1
+  }
+]
