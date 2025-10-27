@@ -1,36 +1,3 @@
-# import os, json, torch
-# from datasets import load_dataset
-# from transformers import AutoTokenizer, AutoModelForCausalLM
-
-# MODEL_ID = os.environ.get("MODEL_ID", "mistralai/Mistral-7B-Instruct-v0.3")
-# N_SAMPLES = int(os.environ.get("N_SAMPLES", "50"))
-
-# def format_prompt(question, context):
-#     return f"Answer concisely.\n\nContext:\n{context}\n\nQuestion: {question}\nAnswer:"
-
-# def main():
-#     tok = AutoTokenizer.from_pretrained(MODEL_ID)
-#     model = AutoModelForCausalLM.from_pretrained(MODEL_ID, torch_dtype=torch.bfloat16, device_map="auto", use_cache=True)
-
-#     ds = load_dataset("hotpot_qa", "distractor", split="validation[:{}]".format(N_SAMPLES))
-#     em = 0
-#     for ex in ds:
-#         ctx = " ".join([" ".join(p) for p in ex["context"]["sentences"][:3]])
-#         prompt = format_prompt(ex["question"], ctx)
-#         inputs = tok(prompt, return_tensors="pt").to(model.device)
-#         with torch.inference_mode():
-#             out = model.generate(**inputs, max_new_tokens=64, do_sample=False)
-#         ans = tok.decode(out[0], skip_special_tokens=True).split("Answer:")[-1].strip().lower()
-#         golds = [a.lower() for a in ex["answer"] if isinstance(ex["answer"], list)] or [ex["answer"].lower()]
-#         if any(g in ans for g in golds):
-#             em += 1
-#     results = {"model": MODEL_ID, "n": N_SAMPLES, "EM_rough": em / N_SAMPLES}
-#     print(json.dumps(results, indent=2))
-
-# if __name__ == "__main__":
-#     main()
-
-# baseline_hotpot_eval_extended.py
 import os, time, json, math, random
 import torch
 from datasets import load_dataset
@@ -74,16 +41,30 @@ def main():
     os.makedirs(LOGDIR, exist_ok=True)
     random.seed(0)
 
+    attn = "default" # or "flash_attention_2" or "default"
+
     tok = AutoTokenizer.from_pretrained(MODEL_ID)
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
 
-    model = AutoModelForCausalLM.from_pretrained(
-        MODEL_ID,
-        dtype=torch.bfloat16,      # updated per warning
-        device_map="auto",
-        use_cache=True,
-    )
+    if attn == "flash_attention_2":
+        model = AutoModelForCausalLM.from_pretrained(
+            MODEL_ID,
+            dtype=torch.bfloat16,
+            device_map="auto",
+            use_cache=True,
+            attn_implementation="flash_attention_2"
+        )
+    elif attn == "default":
+        model = AutoModelForCausalLM.from_pretrained(
+            MODEL_ID,
+            dtype=torch.bfloat16,
+            device_map="auto",
+            use_cache=True,
+        )
+    else:
+        raise ValueError(f"Unknown attention implementation: {attn}")
+
 
     ds = load_dataset("hotpot_qa", "distractor", split=f"validation[:{N_SAMPLES}]")
 
