@@ -1,0 +1,209 @@
+{
+  "run_meta": {
+    "run_id": "Mistral-7B-Instruct-v0.3_eager_N50_B8_20251027-183117",
+    "model": "mistralai/Mistral-7B-Instruct-v0.3",
+    "attn": "eager",
+    "dtype": "torch.bfloat16",
+    "device_map": "auto",
+    "contexts": [
+      16384,
+      32768
+    ],
+    "n_samples": 50,
+    "batch_size": 8,
+    "max_new_tokens": 64,
+    "timestamp": "20251027-183117"
+  },
+  "ctx_summaries": [
+    {
+      "run_id": "Mistral-7B-Instruct-v0.3_eager_N50_B8_20251027-183117",
+      "model": "mistralai/Mistral-7B-Instruct-v0.3",
+      "attn": "eager",
+      "context_tokens": 16384,
+      "n_requests": 7,
+      "latency_ms_p50": 9058.2,
+      "latency_ms_p95": 9058.2,
+      "ms_per_token_p50": 141.53,
+      "ms_per_token_p95": 141.53,
+      "tok_per_s_p50": 7.07,
+      "tok_per_s_p95": 7.07,
+      "peak_gpu_mem_gb_p95": 21.15
+    },
+    {
+      "run_id": "Mistral-7B-Instruct-v0.3_eager_N50_B8_20251027-183117",
+      "model": "mistralai/Mistral-7B-Instruct-v0.3",
+      "attn": "eager",
+      "context_tokens": 32768,
+      "n_requests": 7,
+      "latency_ms_p50": 18976.08,
+      "latency_ms_p95": 18976.08,
+      "ms_per_token_p50": 296.5,
+      "ms_per_token_p95": 296.5,
+      "tok_per_s_p50": 3.37,
+      "tok_per_s_p95": 3.37,
+      "peak_gpu_mem_gb_p95": 28.79
+    }
+  ],
+  "rows": [
+    {
+      "run_id": "Mistral-7B-Instruct-v0.3_eager_N50_B8_20251027-183117",
+      "model": "mistralai/Mistral-7B-Instruct-v0.3",
+      "attn": "eager",
+      "context_tokens": 16384,
+      "batch_size": 8,
+      "error": "CUDA out of memory. Tried to allocate 3.50 GiB. GPU 0 has a total capacity of 47.40 GiB of which 3.49 GiB is free. Including non-PyTorch memory, this process ha",
+      "success": false,
+      "oom": true
+    },
+    {
+      "run_id": "Mistral-7B-Instruct-v0.3_eager_N50_B8_20251027-183117",
+      "model": "mistralai/Mistral-7B-Instruct-v0.3",
+      "attn": "eager",
+      "context_tokens": 16384,
+      "batch_size": 8,
+      "error": "CUDA out of memory. Tried to allocate 3.50 GiB. GPU 0 has a total capacity of 47.40 GiB of which 3.49 GiB is free. Including non-PyTorch memory, this process ha",
+      "success": false,
+      "oom": true
+    },
+    {
+      "run_id": "Mistral-7B-Instruct-v0.3_eager_N50_B8_20251027-183117",
+      "model": "mistralai/Mistral-7B-Instruct-v0.3",
+      "attn": "eager",
+      "context_tokens": 16384,
+      "batch_size": 8,
+      "error": "CUDA out of memory. Tried to allocate 3.50 GiB. GPU 0 has a total capacity of 47.40 GiB of which 3.49 GiB is free. Including non-PyTorch memory, this process ha",
+      "success": false,
+      "oom": true
+    },
+    {
+      "run_id": "Mistral-7B-Instruct-v0.3_eager_N50_B8_20251027-183117",
+      "model": "mistralai/Mistral-7B-Instruct-v0.3",
+      "attn": "eager",
+      "context_tokens": 16384,
+      "batch_size": 8,
+      "error": "CUDA out of memory. Tried to allocate 3.50 GiB. GPU 0 has a total capacity of 47.40 GiB of which 3.49 GiB is free. Including non-PyTorch memory, this process ha",
+      "success": false,
+      "oom": true
+    },
+    {
+      "run_id": "Mistral-7B-Instruct-v0.3_eager_N50_B8_20251027-183117",
+      "model": "mistralai/Mistral-7B-Instruct-v0.3",
+      "attn": "eager",
+      "context_tokens": 16384,
+      "batch_size": 8,
+      "error": "CUDA out of memory. Tried to allocate 3.50 GiB. GPU 0 has a total capacity of 47.40 GiB of which 3.49 GiB is free. Including non-PyTorch memory, this process ha",
+      "success": false,
+      "oom": true
+    },
+    {
+      "run_id": "Mistral-7B-Instruct-v0.3_eager_N50_B8_20251027-183117",
+      "model": "mistralai/Mistral-7B-Instruct-v0.3",
+      "attn": "eager",
+      "context_tokens": 16384,
+      "batch_size": 8,
+      "error": "CUDA out of memory. Tried to allocate 3.50 GiB. GPU 0 has a total capacity of 47.40 GiB of which 3.49 GiB is free. Including non-PyTorch memory, this process ha",
+      "success": false,
+      "oom": true
+    },
+    {
+      "run_id": "Mistral-7B-Instruct-v0.3_eager_N50_B8_20251027-183117",
+      "model": "mistralai/Mistral-7B-Instruct-v0.3",
+      "attn": "eager",
+      "context_tokens": 16384,
+      "batch_size": 2,
+      "latency_ms_total": 9058.2,
+      "avg_gen_tokens": 64.0,
+      "tok_per_s": 7.07,
+      "ms_per_token": 141.53,
+      "peak_gpu_mem_gb": 21.15,
+      "success": true
+    },
+    {
+      "run_id": "Mistral-7B-Instruct-v0.3_eager_N50_B8_20251027-183117",
+      "model": "mistralai/Mistral-7B-Instruct-v0.3",
+      "attn": "eager",
+      "context_tokens": 32768,
+      "batch_size": 8,
+      "error": "CUDA out of memory. Tried to allocate 7.00 GiB. GPU 0 has a total capacity of 47.40 GiB of which 4.06 GiB is free. Including non-PyTorch memory, this process ha",
+      "success": false,
+      "oom": true
+    },
+    {
+      "run_id": "Mistral-7B-Instruct-v0.3_eager_N50_B8_20251027-183117",
+      "model": "mistralai/Mistral-7B-Instruct-v0.3",
+      "attn": "eager",
+      "context_tokens": 32768,
+      "batch_size": 8,
+      "error": "CUDA out of memory. Tried to allocate 7.00 GiB. GPU 0 has a total capacity of 47.40 GiB of which 4.06 GiB is free. Including non-PyTorch memory, this process ha",
+      "success": false,
+      "oom": true
+    },
+    {
+      "run_id": "Mistral-7B-Instruct-v0.3_eager_N50_B8_20251027-183117",
+      "model": "mistralai/Mistral-7B-Instruct-v0.3",
+      "attn": "eager",
+      "context_tokens": 32768,
+      "batch_size": 8,
+      "error": "CUDA out of memory. Tried to allocate 7.00 GiB. GPU 0 has a total capacity of 47.40 GiB of which 1.06 GiB is free. Including non-PyTorch memory, this process ha",
+      "success": false,
+      "oom": true
+    },
+    {
+      "run_id": "Mistral-7B-Instruct-v0.3_eager_N50_B8_20251027-183117",
+      "model": "mistralai/Mistral-7B-Instruct-v0.3",
+      "attn": "eager",
+      "context_tokens": 32768,
+      "batch_size": 8,
+      "error": "CUDA out of memory. Tried to allocate 7.00 GiB. GPU 0 has a total capacity of 47.40 GiB of which 1.06 GiB is free. Including non-PyTorch memory, this process ha",
+      "success": false,
+      "oom": true
+    },
+    {
+      "run_id": "Mistral-7B-Instruct-v0.3_eager_N50_B8_20251027-183117",
+      "model": "mistralai/Mistral-7B-Instruct-v0.3",
+      "attn": "eager",
+      "context_tokens": 32768,
+      "batch_size": 8,
+      "error": "CUDA out of memory. Tried to allocate 7.00 GiB. GPU 0 has a total capacity of 47.40 GiB of which 1.06 GiB is free. Including non-PyTorch memory, this process ha",
+      "success": false,
+      "oom": true
+    },
+    {
+      "run_id": "Mistral-7B-Instruct-v0.3_eager_N50_B8_20251027-183117",
+      "model": "mistralai/Mistral-7B-Instruct-v0.3",
+      "attn": "eager",
+      "context_tokens": 32768,
+      "batch_size": 8,
+      "error": "CUDA out of memory. Tried to allocate 7.00 GiB. GPU 0 has a total capacity of 47.40 GiB of which 1.06 GiB is free. Including non-PyTorch memory, this process ha",
+      "success": false,
+      "oom": true
+    },
+    {
+      "run_id": "Mistral-7B-Instruct-v0.3_eager_N50_B8_20251027-183117",
+      "model": "mistralai/Mistral-7B-Instruct-v0.3",
+      "attn": "eager",
+      "context_tokens": 32768,
+      "batch_size": 2,
+      "latency_ms_total": 18976.08,
+      "avg_gen_tokens": 64.0,
+      "tok_per_s": 3.37,
+      "ms_per_token": 296.5,
+      "peak_gpu_mem_gb": 28.79,
+      "success": true
+    }
+  ],
+  "summary": {
+    "run_id": "Mistral-7B-Instruct-v0.3_eager_N50_B8_20251027-183117",
+    "model": "mistralai/Mistral-7B-Instruct-v0.3",
+    "attn": "eager",
+    "total_samples": 50,
+    "batch_size": 8,
+    "contexts": [
+      16384,
+      32768
+    ],
+    "oom_count": 12,
+    "EM_rough": 0.04,
+    "timestamp": "20251027-183117"
+  }
+}
