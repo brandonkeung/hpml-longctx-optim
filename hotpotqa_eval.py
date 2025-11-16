@@ -4,6 +4,14 @@ from datasets import load_dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from transformers import StoppingCriteria, StoppingCriteriaList
 
+try:
+    from torch.nn.attention.flex_attention import flex_attention, create_block_mask  # noqa: F401
+    _HAS_FLEX_ATTENTION = True
+except Exception:  # pragma: no cover - flex kernel optional
+    flex_attention = None
+    create_block_mask = None
+    _HAS_FLEX_ATTENTION = False
+
 # ---------------------------
 # Config (env-overridable)
 # ---------------------------
@@ -14,7 +22,7 @@ N_SAMPLES = int(os.environ.get("N_SAMPLES", "50"))
 BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "1"))
 CONTEXTS = [int(x) for x in os.environ.get("CONTEXTS", "512,2048,8192").split(",")]
 MAX_NEW_TOKENS = int(os.environ.get("MAX_NEW_TOKENS", "64"))
-ATTN_IMPL = os.environ.get("ATTN_IMPL", "eager").lower()  # eager | sdpa | flash2
+ATTN_IMPL = os.environ.get("ATTN_IMPL", "eager").lower()  # eager | sdpa | flash2 | flex
 LOGDIR = os.environ.get("LOGDIR", "./logs")
 
 # ---------------------------
@@ -105,6 +113,14 @@ def main():
     elif ATTN_IMPL == "eager":
         attn_label = "eager"
         load_kwargs["attn_implementation"] = "eager"
+    elif ATTN_IMPL in ("flex", "flex_attention"):
+        if not _HAS_FLEX_ATTENTION:
+            raise RuntimeError(
+                "ATTN_IMPL=flex requested but torch.nn.attention.flex_attention is not available. "
+                "Please ensure you are running PyTorch with FlexAttention support."
+            )
+        attn_label = "flex"
+        load_kwargs["attn_implementation"] = "flex_attention"
     else:
         raise ValueError(f"Unknown ATTN_IMPL: {ATTN_IMPL}")
 
