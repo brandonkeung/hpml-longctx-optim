@@ -48,6 +48,12 @@ def generate_with_l2_compress(
     eos_token_id = generate_kwargs.get('eos_token_id', None)
     
     with torch.no_grad():
+        # Start TTFT timer BEFORE any work (prefill + compression)
+        torch.cuda.synchronize()
+        ttft_start = torch.cuda.Event(enable_timing=True)
+        ttft_end = torch.cuda.Event(enable_timing=True)
+        ttft_start.record()
+        
         # Step 1: Prefill - process entire input prompt
         outputs = model(
             input_ids=input_ids,
@@ -66,8 +72,7 @@ def generate_with_l2_compress(
             else:
                 legacy_cache = past_key_values
             
-            print(f"compressing with keep_ratio={keep_ratio}, prune_after={prune_after}, skip_layers={skip_layers}")
-            # Apply L2 compression
+            # Apply L2 compression (included in TTFT measurement)
             compressed_cache = l2_compress(
                 legacy_cache,
                 keep_ratio=keep_ratio,
@@ -82,15 +87,47 @@ def generate_with_l2_compress(
             else:
                 past_key_values = compressed_cache
         
-        # Step 3: Manual decode loop
-        generated = []
-        ttft_ms = 0.0
+        # Get first token from prefill logits
+        logits = outputs.logits[:, -1, :]
+        if do_sample:
+            probs = torch.softmax(logits, dim=-1)
+            next_token = torch.multinomial(probs, num_samples=1)
+        else:
+            next_token = torch.argmax(logits, dim=-1, keepdim=True)
         
-        for step in range(max_new_tokens):
-            # Get next token logits
-            logits = outputs.logits[:, -1, :]
+        # Stop TTFT timer AFTER first token is produced
+        ttft_end.record()
+        torch.cuda.synchronize()
+        ttft_ms = ttft_start.elapsed_time(ttft_end)
+        
+        # Step 3: Decode loop for remaining tokens
+        generated = [next_token]
+        
+        # Check for EOS on first token
+        if eos_token_id is not None and (next_token == eos_token_id).all():
+            output_ids = torch.cat([input_ids] + generated, dim=-1)
+            return output_ids, ttft_ms
+        
+        for step in range(1, max_new_tokens):
+            # Update attention mask
+            if attention_mask is not None:
+                attention_mask = torch.cat([
+                    attention_mask,
+                    torch.ones((batch_size, 1), dtype=attention_mask.dtype, device=device)
+                ], dim=-1)
             
-            # Sample or greedy decode
+            # Forward pass with cached keys/values
+            outputs = model(
+                input_ids=next_token,
+                attention_mask=attention_mask,
+                past_key_values=past_key_values,
+                use_cache=True,
+                return_dict=True,
+            )
+            past_key_values = outputs.past_key_values
+            
+            # Get next token
+            logits = outputs.logits[:, -1, :]
             if do_sample:
                 probs = torch.softmax(logits, dim=-1)
                 next_token = torch.multinomial(probs, num_samples=1)
@@ -102,38 +139,6 @@ def generate_with_l2_compress(
             # Check for EOS
             if eos_token_id is not None and (next_token == eos_token_id).all():
                 break
-            
-            # Prepare for next iteration
-            if step < max_new_tokens - 1:
-                # Update attention mask
-                if attention_mask is not None:
-                    attention_mask = torch.cat([
-                        attention_mask,
-                        torch.ones((batch_size, 1), dtype=attention_mask.dtype, device=device)
-                    ], dim=-1)
-                
-                # Measure TTFT for first decode step
-                if step == 0:
-                    torch.cuda.synchronize()
-                    ttft_start = torch.cuda.Event(enable_timing=True)
-                    ttft_end = torch.cuda.Event(enable_timing=True)
-                    ttft_start.record()
-                
-                # Forward pass with cached keys/values
-                outputs = model(
-                    input_ids=next_token,
-                    attention_mask=attention_mask,
-                    past_key_values=past_key_values,
-                    use_cache=True,
-                    return_dict=True,
-                )
-                past_key_values = outputs.past_key_values
-                
-                # Record TTFT after first decode step
-                if step == 0:
-                    ttft_end.record()
-                    torch.cuda.synchronize()
-                    ttft_ms = ttft_start.elapsed_time(ttft_end)
         
         # Concatenate input and generated tokens
         if generated:
