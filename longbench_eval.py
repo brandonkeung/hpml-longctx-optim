@@ -1,4 +1,5 @@
-import os, time, json, math, random, datetime, re
+import os
+import time, json, math, random, datetime, re
 import torch
 from datasets import load_dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -23,7 +24,7 @@ BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "1"))
 CONTEXTS = [int(x) for x in os.environ.get("CONTEXTS", "512,2048,8192").split(",")]
 MAX_NEW_TOKENS = int(os.environ.get("MAX_NEW_TOKENS", "64"))
 ATTN_IMPL = os.environ.get("ATTN_IMPL", "eager").lower()  # eager | sdpa | flash2 | flex
-LOGDIR = os.environ.get("LOGDIR", "./logs")
+LOGDIR = os.environ.get("LOGDIR", "./logs/longbench")
 
 DATASET_ID = os.environ.get("DATASET_ID", "zai-org/LongBench-v2")
 SPLIT = os.environ.get("SPLIT", f"train[:{N_SAMPLES}]")
@@ -192,10 +193,10 @@ def main():
     all_rows = []
     ctx_summaries = []
     oom_count = 0
-    em_hits = 0
 
     # Eval
     for ctx_len in CONTEXTS:
+        em_hits = 0
         per_req_lat, per_tok_lat, per_req_tokps, per_req_peak = [], [], [], []
         per_req_ttft, per_req_em = [], []
         per_req_decode_ms, per_req_mspt_decode, per_req_tokps_decode = [], [], []
@@ -298,6 +299,7 @@ def main():
                 })
 
             except RuntimeError as e:
+                print(str(e)[:160])
                 is_oom = "out of memory" in str(e).lower()
                 oom_count += 1 if is_oom else 0
                 all_rows.append({

@@ -16,7 +16,7 @@ BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "1"))
 CONTEXTS = [int(x) for x in os.environ.get("CONTEXTS", "2048,8192,16384").split(",")]
 MAX_NEW_TOKENS = int(os.environ.get("MAX_NEW_TOKENS", "64"))
 ATTN_IMPL = os.environ.get("ATTN_IMPL", "eager").lower()  # eager | sdpa | flash2
-LOGDIR = os.environ.get("LOGDIR", "./logs")
+LOGDIR = os.environ.get("LOGDIR", "./logs/narrativeqa")
 
 
 # --- KV compression mode ---
