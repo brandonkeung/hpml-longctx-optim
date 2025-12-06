@@ -20,12 +20,12 @@ CONTEXTS = [int(x) for x in os.environ.get("CONTEXTS", "2048,8192,16384").split(
 MAX_NEW_TOKENS = int(os.environ.get("MAX_NEW_TOKENS", "64"))
 ATTN_IMPL = os.environ.get("ATTN_IMPL", "eager").lower()  # eager | sdpa | flash2
 LOGDIR = os.environ.get("LOGDIR", "./logs/narrativeqa")
-USE_4BIT = os.environ.get("USE_4BIT", "true").lower() == "true"
+USE_4BIT = os.environ.get("USE_4BIT", "false").lower() == "true"
 
 # --- KV compression mode ---
 #   none        -> vanilla generate()
 #   l2          -> manual decode loop with L2-based pruning of KV values
-KV_MODE = os.environ.get("KV_MODE", "l2").lower()  # none | l2
+KV_MODE = os.environ.get("KV_MODE", "none").lower()  # none | l2
 # For KV_MODE=l2
 KEEP_RATIO = float(os.environ.get("KEEP_RATIO", "0.7"))     # keep top-% by magnitude
 PRUNE_AFTER = int(os.environ.get("PRUNE_AFTER", "512"))    # start pruning after this length
@@ -413,6 +413,8 @@ def main():
                     keep_ratio=KEEP_RATIO,          # e.g., 0.9
                     prune_after=PRUNE_AFTER,        # e.g., 1048
                     skip_layers=SKIP_LAYERS,
+                    pad_token_id=tok.eos_token_id,
+                    eos_token_id=tok.eos_token_id,
                 )
                 pred_text = tok.decode(out[0], skip_special_tokens=True)
             else:
