@@ -4,6 +4,9 @@ from datasets import load_dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from transformers import StoppingCriteria, StoppingCriteriaList
 from kv_compression.kv_l2_dynamic import generate_with_l2_compress
+import evaluate
+from transformers import BitsAndBytesConfig 
+
 
 # ---------------------------
 # Config (env-overridable)
@@ -17,12 +20,12 @@ CONTEXTS = [int(x) for x in os.environ.get("CONTEXTS", "2048,8192,16384").split(
 MAX_NEW_TOKENS = int(os.environ.get("MAX_NEW_TOKENS", "64"))
 ATTN_IMPL = os.environ.get("ATTN_IMPL", "eager").lower()  # eager | sdpa | flash2
 LOGDIR = os.environ.get("LOGDIR", "./logs/narrativeqa")
-
+USE_4BIT = os.environ.get("USE_4BIT", "true").lower() == "true"
 
 # --- KV compression mode ---
 #   none        -> vanilla generate()
 #   l2          -> manual decode loop with L2-based pruning of KV values
-KV_MODE = os.environ.get("KV_MODE", "none").lower()  # none | quantized | l2
+KV_MODE = os.environ.get("KV_MODE", "l2").lower()  # none | l2
 # For KV_MODE=l2
 KEEP_RATIO = float(os.environ.get("KEEP_RATIO", "0.7"))     # keep top-% by magnitude
 PRUNE_AFTER = int(os.environ.get("PRUNE_AFTER", "512"))    # start pruning after this length
@@ -154,6 +157,19 @@ def main():
     else:
         raise ValueError(f"Unknown ATTN_IMPL: {ATTN_IMPL}")
 
+    if USE_4BIT:
+        print("[info] Activating 4-bit NF4 Quantization")
+        load_kwargs["quantization_config"] = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=DTYPE,  # usage: bfloat16 or float16
+            bnb_4bit_quant_type="nf4",     # Best accuracy
+            bnb_4bit_use_double_quant=True # Saves an extra 0.4 bits per parameter
+        )
+    else:
+        # Only set torch_dtype explicitly if NOT using 4bit (BnB handles storage type internally)
+        load_kwargs["torch_dtype"] = DTYPE
+
+
     run_id = f"{model_name_tag}_{attn_label}_N{N_SAMPLES}_B{BATCH_SIZE}_{KV_MODE}_{ts}"
     jsonl_path = os.path.join(LOGDIR, f"{run_id}.jsonl")
     full_json_path = os.path.join(LOGDIR, f"{run_id}_full.json")
@@ -174,7 +190,16 @@ def main():
 
     # Data: NarrativeQA
     nq_examples = load_narrativeqa_examples(N_SAMPLES)
-    
+
+    # Load text metrics once
+    meteor_metric = evaluate.load("meteor")
+    rouge_metric = evaluate.load("rouge")
+
+    all_rows = []
+    ctx_summaries = []
+    oom_count = 0
+    em_hits = 0  # can delete if you drop EM entirely
+
     all_rows = []
     ctx_summaries = []
     oom_count = 0
@@ -182,9 +207,12 @@ def main():
     
     for ctx_len in CONTEXTS:
         per_req_lat, per_tok_lat, per_req_tokps, per_req_peak = [], [], [], []
-        per_req_ttft, per_req_em = [], []
+        per_req_ttft = []
         per_req_decode_ms, per_req_mspt_decode, per_req_tokps_decode = [], [], []
         
+        ctx_preds = []
+        ctx_refs = []
+
         for i in range(0, len(nq_examples), BATCH_SIZE):
             batch = nq_examples[i:i+BATCH_SIZE]
             prompts = []
@@ -269,12 +297,19 @@ def main():
                 per_req_tokps.append(avg_gen / (total_ms/1000.0))
                 per_req_peak.append(torch.cuda.max_memory_allocated()/(1024**3))
 
-                # EM scoring
+                # Collect predictions and references for metric computation
                 for j, golds in enumerate(golds_list):
-                    pred = texts[j].split("Answer:", 1)[-1].strip().split("\n", 1)[0].split(".")[0].strip()
-                    is_em = 1 if exact_match(pred, golds) else 0
-                    per_req_em.append(is_em)
-                    em_hits += is_em
+                    pred = (
+                        texts[j]
+                        .split("Answer:", 1)[-1]   # take text after "Answer:"
+                        .strip()
+                        .split("\n", 1)[0]         # first line
+                        .split(".")[0]             # optionally strip trailing sentence
+                        .strip()
+                    )
+                    ctx_preds.append(pred)
+                    ctx_refs.append(golds)  # golds is already a list of reference strings
+
 
                 # per-request row (aggregate for the batch)
                 all_rows.append({
@@ -313,6 +348,22 @@ def main():
                 })
                 torch.cuda.empty_cache()
                 continue
+        
+        # Compute quality metrics for this context length
+        meteor_res = meteor_metric.compute(
+            predictions=ctx_preds,
+            references=ctx_refs,   # list of list-of-strings
+        )
+        rouge_res = rouge_metric.compute(
+            predictions=ctx_preds,
+            references=ctx_refs,
+            use_stemmer=True,
+        )
+
+        meteor_score = meteor_res["meteor"]
+        rouge1 = rouge_res["rouge1"]
+        rougeL = rouge_res["rougeL"]
+
 
         # Context summary
         ctx_summary = {
@@ -320,6 +371,7 @@ def main():
             "model": MODEL_ID,
             "attn": attn_label,
             "kv_mode": KV_MODE,
+            "quantized": USE_4BIT,
             "context_tokens": ctx_len,
             "n_requests": math.ceil(len(nq_examples)/BATCH_SIZE),
             "latency_ms_p50": round(percentile(per_req_lat, 0.50), 2),
@@ -337,7 +389,9 @@ def main():
             "tok_per_s_decode_p50": round(percentile(per_req_tokps_decode, 0.50), 2),
             "tok_per_s_decode_p95": round(percentile(per_req_tokps_decode, 0.95), 2),
             "peak_gpu_mem_gb_p95": round(percentile(per_req_peak, 0.95), 2),
-            "em_rate": round(sum(per_req_em) / max(len(per_req_em), 1), 4),
+            "meteor": round(meteor_score, 4),
+            "rouge1": round(rouge1, 4),
+            "rougeL": round(rougeL, 4),        
         }
         print(json.dumps(ctx_summary, indent=2))
         ctx_summaries.append(ctx_summary)
@@ -380,6 +434,7 @@ def main():
         "model": MODEL_ID,
         "attn": attn_label,
         "kv_mode": KV_MODE,
+        "quantized": USE_4BIT,
         "total_samples": N_SAMPLES,
         "batch_size": BATCH_SIZE,
         "contexts": CONTEXTS,
@@ -395,6 +450,7 @@ def main():
             "contexts": CONTEXTS, "n_samples": N_SAMPLES,
             "batch_size": BATCH_SIZE, "max_new_tokens": MAX_NEW_TOKENS,
             "kv_mode": KV_MODE, "timestamp": ts,
+            "quantized": USE_4BIT,
             "kv_l2": {"keep_ratio": KEEP_RATIO, "prune_after": PRUNE_AFTER, "skip_layers": SKIP_LAYERS},
         },
         "ctx_summaries": ctx_summaries,
