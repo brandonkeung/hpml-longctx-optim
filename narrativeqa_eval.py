@@ -6,6 +6,7 @@ from transformers import StoppingCriteria, StoppingCriteriaList
 from kv_compression.kv_l2_dynamic import generate_with_l2_compress
 import evaluate
 from transformers import BitsAndBytesConfig 
+import wandb
 
 
 # ---------------------------
@@ -173,6 +174,27 @@ def main():
     run_id = f"{model_name_tag}_{attn_label}_N{N_SAMPLES}_B{BATCH_SIZE}_{KV_MODE}_{ts}"
     jsonl_path = os.path.join(LOGDIR, f"{run_id}.jsonl")
     full_json_path = os.path.join(LOGDIR, f"{run_id}_full.json")
+
+    # --- W&B init ---
+    wandb.init(
+        project="hpml-longctx",       # pick a project name
+        name=run_id,                  # so each run lines up with your JSON
+        config={
+            "model_id": MODEL_ID,
+            "dtype": str(DTYPE),
+            "device_map": DEVICE_MAP,
+            "attn_impl": attn_label,
+            "kv_mode": KV_MODE,
+            "use_4bit": USE_4BIT,
+            "n_samples": N_SAMPLES,
+            "batch_size": BATCH_SIZE,
+            "contexts": CONTEXTS,
+            "max_new_tokens": MAX_NEW_TOKENS,
+            "keep_ratio": KEEP_RATIO,
+            "prune_after": PRUNE_AFTER,
+            "skip_layers": SKIP_LAYERS,
+        },
+    )
 
     random.seed(0)
     
@@ -393,6 +415,25 @@ def main():
             "rouge1": round(rouge1, 4),
             "rougeL": round(rougeL, 4),        
         }
+
+        wandb.log(
+            {
+                "context_tokens": ctx_len,  # x-axis if you want
+                "quality/meteor": meteor_score,
+                "quality/rouge1": rouge1,
+                "quality/rougeL": rougeL,
+                "latency/latency_ms_p50": ctx_summary["latency_ms_p50"],
+                "latency/latency_ms_p95": ctx_summary["latency_ms_p95"],
+                "latency/ttft_ms_p50": ctx_summary["ttft_ms_p50"],
+                "latency/ttft_ms_p95": ctx_summary["ttft_ms_p95"],
+                "throughput/ms_per_token_p50": ctx_summary["ms_per_token_p50"],
+                "throughput/ms_per_token_p95": ctx_summary["ms_per_token_p95"],
+                "throughput/tok_per_s_p50": ctx_summary["tok_per_s_p50"],
+                "throughput/tok_per_s_p95": ctx_summary["tok_per_s_p95"],
+                "memory/peak_gpu_mem_gb_p95": ctx_summary["peak_gpu_mem_gb_p95"],
+            }
+        )
+
         print(json.dumps(ctx_summary, indent=2))
         ctx_summaries.append(ctx_summary)
         with open(jsonl_path, "a") as jf:
@@ -462,6 +503,17 @@ def main():
     full_json_path = os.path.join(LOGDIR, f"{run_id}_full.json")
     with open(full_json_path, "w") as f:
         json.dump(full, f, indent=2)
+
+        # Convert per-request rows to a W&B table (optional)
+    if all_rows:
+        # get consistent columns
+        columns = sorted(all_rows[0].keys())
+        table = wandb.Table(columns=columns)
+        for row in all_rows:
+            table.add_data(*(row.get(col) for col in columns))
+        wandb.log({"per_request_metrics": table})
+
+    wandb.finish()
 
 if __name__ == "__main__":
     main()
