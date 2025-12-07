@@ -27,6 +27,7 @@ from datasets import load_dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from transformers import StoppingCriteria, StoppingCriteriaList
 from kv_compression.kv_l2_dynamic import generate_with_l2_compress
+from transformers import BitsAndBytesConfig 
 
 # ---------------------------
 # Config (env-overridable)
@@ -34,12 +35,13 @@ from kv_compression.kv_l2_dynamic import generate_with_l2_compress
 MODEL_ID = os.environ.get("MODEL_ID", "mistralai/Mistral-7B-Instruct-v0.3")
 DTYPE = getattr(torch, os.environ.get("DTYPE", "bfloat16"))
 DEVICE_MAP = os.environ.get("DEVICE_MAP", "auto")
-N_SAMPLES = int(os.environ.get("N_SAMPLES", "50"))
-BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "1"))
-CONTEXTS = [int(x) for x in os.environ.get("CONTEXTS", "8192,16384").split(",")]
+N_SAMPLES = int(os.environ.get("N_SAMPLES", "100"))
+BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "5"))
+CONTEXTS = [int(x) for x in os.environ.get("CONTEXTS", "16384").split(",")]
 MAX_NEW_TOKENS = int(os.environ.get("MAX_NEW_TOKENS", "64"))
 ATTN_IMPL = os.environ.get("ATTN_IMPL", "eager").lower()  # eager | sdpa | flash2
-LOGDIR = os.environ.get("LOGDIR", "./logs")
+LOGDIR = os.environ.get("LOGDIR", "./logs/longbench")
+USE_4BIT = os.environ.get("USE_4BIT", "false").lower() == "true"
 
 DATASET_ID = os.environ.get("DATASET_ID", "zai-org/LongBench-v2")
 SPLIT = os.environ.get("SPLIT", f"train[:{N_SAMPLES}]")
@@ -97,24 +99,42 @@ def percentile(values, p):
 
 
 def extract_choice_letter(text: str) -> str:
-    """Extract the first clear choice letter A/B/C/D from generated text"""
+    """
+    Extract the first clear choice letter A/B/C/D from generated text.
+    Handles various formats: "A", "a", "(A)", "A.", "A:", "Option A", "The answer is A", etc.
+    """
     if not text:
         return ""
     part = text.strip()
     
-    # Direct single letter
-    m = re.search(r"\b([A-D])\b", part)
-    if m:
-        return m.group(1)
+    # Priority 1: First character is A-D (most common case for well-behaved models)
+    if part and part[0].upper() in "ABCD":
+        return part[0].upper()
     
-    # Like '(A)'
-    m = re.search(r"\(([A-D])\)", part)
+    # Priority 2: Starts with common patterns like "(A)" or "A." or "A:"
+    m = re.match(r"^\s*\(?([A-Da-d])\)?[\.\:\)\s]", part)
     if m:
-        return m.group(1)
+        return m.group(1).upper()
     
-    # Fallback: first char if in A-D
-    if part and part[0] in "ABCD":
-        return part[0]
+    # Priority 3: "Option A" or "Choice A" or "Answer: A" patterns
+    m = re.search(r"(?:option|choice|answer)[:\s]+\(?([A-Da-d])\)?", part, re.IGNORECASE)
+    if m:
+        return m.group(1).upper()
+    
+    # Priority 4: "The answer is A" or "I choose A" patterns
+    m = re.search(r"(?:is|choose|select|pick)\s+\(?([A-Da-d])\)?", part, re.IGNORECASE)
+    if m:
+        return m.group(1).upper()
+    
+    # Priority 5: Any standalone A-D letter (with word boundary, case-insensitive)
+    m = re.search(r"\b([A-Da-d])\b", part)
+    if m:
+        return m.group(1).upper()
+    
+    # Priority 6: Parenthesized letter anywhere
+    m = re.search(r"\(([A-Da-d])\)", part)
+    if m:
+        return m.group(1).upper()
     
     return ""
 
@@ -173,6 +193,18 @@ def main():
     else:
         raise ValueError(f"Unknown ATTN_IMPL: {ATTN_IMPL}")
     
+    if USE_4BIT:
+        print("[info] Activating 4-bit NF4 Quantization")
+        load_kwargs["quantization_config"] = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=DTYPE,  # usage: bfloat16 or float16
+            bnb_4bit_quant_type="nf4",     # Best accuracy
+            bnb_4bit_use_double_quant=True # Saves an extra 0.4 bits per parameter
+        )
+    else:
+        # Only set torch_dtype explicitly if NOT using 4bit (BnB handles storage type internally)
+        load_kwargs["torch_dtype"] = DTYPE
+    
     run_id = f"{model_name_tag}_{attn_label}_N{N_SAMPLES}_B{BATCH_SIZE}_{KV_MODE}_{ts}"
     jsonl_path = os.path.join(LOGDIR, f"{run_id}.jsonl")
     full_json_path = os.path.join(LOGDIR, f"{run_id}_full.json")
@@ -183,7 +215,7 @@ def main():
     tok = AutoTokenizer.from_pretrained(MODEL_ID)
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
-    print(f"[info] Loading {MODEL_ID} (attn={attn_label}, dtype={DTYPE}, device_map={DEVICE_MAP}, kv_mode={KV_MODE})")
+    print(f"[info] Loading {MODEL_ID} (attn={attn_label}, dtype={DTYPE}, device_map={DEVICE_MAP}, kv_mode={KV_MODE}, use_4bit={USE_4BIT})")
     model = AutoModelForCausalLM.from_pretrained(MODEL_ID, **load_kwargs)
     print("Attention impl in config:", getattr(model.config, "_attn_implementation", None))
     try:
@@ -208,9 +240,9 @@ def main():
     all_rows = []
     ctx_summaries = []
     oom_count = 0
-    em_hits = 0
     
     for ctx_len in CONTEXTS:
+        em_hits = 0
         per_req_lat, per_tok_lat, per_req_tokps, per_req_peak = [], [], [], []
         per_req_ttft, per_req_em = [], []
         per_req_decode_ms, per_req_mspt_decode, per_req_tokps_decode = [], [], []
@@ -342,6 +374,7 @@ def main():
                 per_req_tokps_decode.append(tok_per_s_decode if math.isfinite(tok_per_s_decode) else float("nan"))
                 
             except (RuntimeError, torch.OutOfMemoryError) as e:
+                print(str(e)[:160])
                 is_oom = "out of memory" in str(e).lower()
                 oom_count += 1 if is_oom else 0
                 all_rows.append({
@@ -364,6 +397,7 @@ def main():
             "model": MODEL_ID,
             "attn": attn_label,
             "kv_mode": KV_MODE,
+            "use_4bit": USE_4BIT,
             "context_tokens": ctx_len,
             "n_requests": math.ceil(len(examples)/BATCH_SIZE),
             "latency_ms_p50": round(percentile(per_req_lat, 0.50), 2),
@@ -396,33 +430,41 @@ def main():
             prompt = format_prompt(q, context_text, choices)
             inputs_1 = tok(prompt, return_tensors="pt", truncation=True, max_length=ctx_len).to(model.device)
             
-            if KV_MODE == "l2":
-                out, _ = generate_with_l2_compress(
-                    model, tok, inputs_1,
-                    max_new_tokens=MAX_NEW_TOKENS,
-                    keep_ratio=KEEP_RATIO,
-                    prune_after=PRUNE_AFTER,
-                    skip_layers=SKIP_LAYERS,
-                )
-                gen_seq = out[0][inputs_1["input_ids"].shape[1]:]
-                gen_text = tok.decode(gen_seq, skip_special_tokens=True)
-            else:
-                out = model.generate(
-                    **inputs_1, max_new_tokens=MAX_NEW_TOKENS, do_sample=False,
-                    pad_token_id=tok.eos_token_id, eos_token_id=tok.eos_token_id
-                )
-                gen_seq = out[0][inputs_1["input_ids"].shape[1]:]
-                gen_text = tok.decode(gen_seq, skip_special_tokens=True)
-            
-            pred_letter = extract_choice_letter(gen_text)
-            print(f"Q: {q[:100]}...")
-            print(f"Pred: {pred_letter}  (gen: {gen_text[:100]!r})")
-            print(f"Gold: {gold_letter}\n")
+            try:
+                if KV_MODE == "l2":
+                    out, _ = generate_with_l2_compress(
+                        model, tok, inputs_1,
+                        max_new_tokens=MAX_NEW_TOKENS,
+                        keep_ratio=KEEP_RATIO,
+                        prune_after=PRUNE_AFTER,
+                        skip_layers=SKIP_LAYERS,
+                        eos_token_id=tok.eos_token_id,
+                        pad_token_id=tok.eos_token_id,
+                    )
+                    gen_seq = out[0][inputs_1["input_ids"].shape[1]:]
+                    gen_text = tok.decode(gen_seq, skip_special_tokens=True)
+                else:
+                    out = model.generate(
+                        **inputs_1, max_new_tokens=MAX_NEW_TOKENS, do_sample=False,
+                        pad_token_id=tok.eos_token_id, eos_token_id=tok.eos_token_id
+                    )
+                    gen_seq = out[0][inputs_1["input_ids"].shape[1]:]
+                    gen_text = tok.decode(gen_seq, skip_special_tokens=True)
+                
+                pred_letter = extract_choice_letter(gen_text)
+                print(f"Q: {q[:100]}...")
+                print(f"Pred: {pred_letter}  (gen: {gen_text[:100]!r})")
+                print(f"Gold: {gold_letter}\n")
+            except (RuntimeError, torch.OutOfMemoryError) as e:
+                print(f"[debug] OOM while generating sample output: {str(e)[:160]}")
+                torch.cuda.empty_cache()
+                continue
         print("=====================================================\n")
     
     # Final overall summary
     summary = {
         "run_id": run_id,
+        "use_4bit": USE_4BIT,
         "model": MODEL_ID,
         "attn": attn_label,
         "kv_mode": KV_MODE,
@@ -438,6 +480,7 @@ def main():
     full = {
         "run_meta": {
             "run_id": run_id, "model": MODEL_ID, "attn": attn_label,
+            "use_4bit": USE_4BIT,
             "dtype": str(DTYPE), "device_map": DEVICE_MAP,
             "contexts": CONTEXTS, "n_samples": len(examples),
             "batch_size": BATCH_SIZE, "max_new_tokens": MAX_NEW_TOKENS,
