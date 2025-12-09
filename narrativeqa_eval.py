@@ -22,7 +22,7 @@ MAX_NEW_TOKENS = int(os.environ.get("MAX_NEW_TOKENS", "64"))
 ATTN_IMPL = os.environ.get("ATTN_IMPL", "eager").lower()  # eager | sdpa | flash2
 LOGDIR = os.environ.get("LOGDIR", "./logs/narrativeqa")
 USE_4BIT = os.environ.get("USE_4BIT", "false").lower() == "true"
-
+ENTITY = "bk2951-columbia-university"
 # --- KV compression mode ---
 #   none        -> vanilla generate()
 #   l2          -> manual decode loop with L2-based pruning of KV values
@@ -177,8 +177,9 @@ def main():
 
     # --- W&B init ---
     wandb.init(
-        project="hpml-longctx",       # pick a project name
-        name=run_id,                  # so each run lines up with your JSON
+        entity=ENTITY,
+        project="Long-Context-Optimization",
+        name=run_id,
         config={
             "model_id": MODEL_ID,
             "dtype": str(DTYPE),

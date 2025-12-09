@@ -1,0 +1,92 @@
+{
+  "os":  "Linux-5.14.0-362.8.1.el9_3.x86_64-x86_64-with-glibc2.34",
+  "python":  "CPython 3.9.18",
+  "startedAt":  "2025-12-09T04:32:50.681629Z",
+  "program":  "/insomnia001/home/bk2951/hpml-longctx-optim/narrativeqa_eval.py",
+  "codePath":  "narrativeqa_eval.py",
+  "codePathLocal":  "narrativeqa_eval.py",
+  "git":  {
+    "remote":  "https://github.com/brandonkeung/hpml-longctx-optim.git",
+    "commit":  "5c7c75e891d0fe73eb98b38bf7aa83e696282556"
+  },
+  "email":  "bk2951@columbia.edu",
+  "root":  "/insomnia001/home/bk2951/hpml-longctx-optim",
+  "host":  "ins088",
+  "executable":  "/insomnia001/home/bk2951/hpml-longctx-optim/.venv/bin/python",
+  "cpu_count":  96,
+  "cpu_count_logical":  192,
+  "gpu":  "NVIDIA RTX A6000",
+  "gpu_count":  1,
+  "disk":  {
+    "/":  {
+      "total":  "74968989696",
+      "used":  "44292296704"
+    }
+  },
+  "memory":  {
+    "total":  "1081451167744"
+  },
+  "gpu_nvidia":  [
+    {
+      "name":  "NVIDIA RTX A6000",
+      "memoryTotal":  "51527024640",
+      "cudaCores":  10752,
+      "architecture":  "Ampere",
+      "uuid":  "GPU-114f5efb-87c0-5c82-017f-f1a7d2f28cb5"
+    }
+  ],
+  "cudaVersion":  "12.9",
+  "slurm":  {
+    "cluster_name":  "insomnia",
+    "conf":  "/etc/slurm/slurm.conf",
+    "cpus_on_node":  "2",
+    "gpus_on_node":  "1",
+    "gtids":  "0",
+    "job_account":  "edu",
+    "job_cpus_per_node":  "2",
+    "job_end_time":  "1765258291",
+    "job_gid":  "500",
+    "job_group":  "user",
+    "job_id":  "5666677",
+    "job_name":  "bash",
+    "job_nodelist":  "ins088",
+    "job_num_nodes":  "1",
+    "job_partition":  "short",
+    "job_qos":  "interactive",
+    "job_start_time":  "1765251091",
+    "job_uid":  "560037",
+    "job_user":  "bk2951",
+    "jobid":  "5666677",
+    "launch_node_ipaddr":  "10.197.95.250",
+    "localid":  "0",
+    "nnodes":  "1",
+    "nodeid":  "0",
+    "nodelist":  "ins088",
+    "nprocs":  "1",
+    "ntasks":  "1",
+    "oom_kill_step":  "0",
+    "prio_process":  "0",
+    "procid":  "0",
+    "pty_port":  "35293",
+    "pty_win_col":  "118",
+    "pty_win_row":  "14",
+    "srun_comm_host":  "10.197.95.250",
+    "srun_comm_port":  "44291",
+    "step_gpus":  "0",
+    "step_id":  "0",
+    "step_launcher_port":  "44291",
+    "step_nodelist":  "ins088",
+    "step_num_nodes":  "1",
+    "step_num_tasks":  "1",
+    "step_tasks_per_node":  "1",
+    "stepid":  "0",
+    "submit_dir":  "/insomnia001/home/bk2951/hpml-longctx-optim",
+    "submit_host":  "2402-login-002",
+    "task_pid":  "1559185",
+    "tasks_per_node":  "1",
+    "topology_addr":  "ins088",
+    "topology_addr_pattern":  "node",
+    "umask":  "0027"
+  },
+  "writerId":  "5qmbkpbwgg7cgi84wfjf7iu5fjiuba6m"
+}
