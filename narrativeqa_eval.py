@@ -12,7 +12,8 @@ import wandb
 # ---------------------------
 # Config (env-overridable)
 # ---------------------------
-MODEL_ID = os.environ.get("MODEL_ID", "mistralai/Mistral-7B-Instruct-v0.3")
+# MODEL_ID = os.environ.get("MODEL_ID", "mistralai/Mistral-7B-Instruct-v0.3")       # Qwen/Qwen1.5-1.8B-Chat
+MODEL_ID = os.environ.get("MODEL_ID", "Qwen/Qwen1.5-1.8B-Chat")
 DTYPE = getattr(torch, os.environ.get("DTYPE", "bfloat16"))
 DEVICE_MAP = os.environ.get("DEVICE_MAP", "auto")
 N_SAMPLES = int(os.environ.get("N_SAMPLES", "50"))
