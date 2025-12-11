@@ -62,6 +62,19 @@ def generate_with_l2_compress(
             return_dict=True,
         )
         
+        # Get first token from prefill logits
+        logits = outputs.logits[:, -1, :]
+        if do_sample:
+            probs = torch.softmax(logits, dim=-1)
+            next_token = torch.multinomial(probs, num_samples=1)
+        else:
+            next_token = torch.argmax(logits, dim=-1, keepdim=True)
+        
+        # Stop TTFT timer AFTER first token is produced
+        ttft_end.record()
+        torch.cuda.synchronize()
+        ttft_ms = ttft_start.elapsed_time(ttft_end)
+        
         past_key_values = outputs.past_key_values
         
         # Step 2: Compress KV cache if prompt is long enough
@@ -86,19 +99,6 @@ def generate_with_l2_compress(
                 past_key_values = DynamicCache.from_legacy_cache(compressed_cache)
             else:
                 past_key_values = compressed_cache
-        
-        # Get first token from prefill logits
-        logits = outputs.logits[:, -1, :]
-        if do_sample:
-            probs = torch.softmax(logits, dim=-1)
-            next_token = torch.multinomial(probs, num_samples=1)
-        else:
-            next_token = torch.argmax(logits, dim=-1, keepdim=True)
-        
-        # Stop TTFT timer AFTER first token is produced
-        ttft_end.record()
-        torch.cuda.synchronize()
-        ttft_ms = ttft_start.elapsed_time(ttft_end)
         
         # Step 3: Decode loop for remaining tokens
         generated = [next_token]
