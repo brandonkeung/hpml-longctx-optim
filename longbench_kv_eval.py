@@ -28,20 +28,23 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from transformers import StoppingCriteria, StoppingCriteriaList
 from kv_compression.kv_l2_dynamic import generate_with_l2_compress
 from transformers import BitsAndBytesConfig 
+import wandb
 
 # ---------------------------
 # Config (env-overridable)
 # ---------------------------
-MODEL_ID = os.environ.get("MODEL_ID", "mistralai/Mistral-7B-Instruct-v0.3")
+# MODEL_ID = os.environ.get("MODEL_ID", "mistralai/Mistral-7B-Instruct-v0.3")     # Qwen/Qwen1.5-1.8B-Chat
+MODEL_ID = os.environ.get("MODEL_ID", "Qwen/Qwen1.5-1.8B-Chat")
 DTYPE = getattr(torch, os.environ.get("DTYPE", "bfloat16"))
 DEVICE_MAP = os.environ.get("DEVICE_MAP", "auto")
-N_SAMPLES = int(os.environ.get("N_SAMPLES", "100"))
-BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "5"))
-CONTEXTS = [int(x) for x in os.environ.get("CONTEXTS", "16384").split(",")]
+N_SAMPLES = int(os.environ.get("N_SAMPLES", "50"))
+BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "1"))
+CONTEXTS = [int(x) for x in os.environ.get("CONTEXTS", "2048,4096,8192,16384,32768").split(",")]
 MAX_NEW_TOKENS = int(os.environ.get("MAX_NEW_TOKENS", "64"))
 ATTN_IMPL = os.environ.get("ATTN_IMPL", "eager").lower()  # eager | sdpa | flash2
 LOGDIR = os.environ.get("LOGDIR", "./logs/longbench")
 USE_4BIT = os.environ.get("USE_4BIT", "false").lower() == "true"
+ENTITY = "bk2951-columbia-university"
 
 DATASET_ID = os.environ.get("DATASET_ID", "zai-org/LongBench-v2")
 SPLIT = os.environ.get("SPLIT", f"train[:{N_SAMPLES}]")
@@ -210,6 +213,30 @@ def main():
     full_json_path = os.path.join(LOGDIR, f"{run_id}_full.json")
     
     random.seed(0)
+
+    # --- W&B init ---
+    wandb.init(
+        entity=ENTITY,
+        project="Long-Context-Optimization",
+        name=run_id,
+        config={
+            "model_id": MODEL_ID,
+            "dtype": str(DTYPE),
+            "device_map": DEVICE_MAP,
+            "attn_impl": attn_label,
+            "kv_mode": KV_MODE,
+            "use_4bit": USE_4BIT,
+            "n_samples": N_SAMPLES,
+            "batch_size": BATCH_SIZE,
+            "contexts": CONTEXTS,
+            "max_new_tokens": MAX_NEW_TOKENS,
+            "keep_ratio": KEEP_RATIO,
+            "prune_after": PRUNE_AFTER,
+            "skip_layers": SKIP_LAYERS,
+            "dataset_id": DATASET_ID,
+            "split": SPLIT,
+        },
+    )
     
     # Load tokenizer & model
     tok = AutoTokenizer.from_pretrained(MODEL_ID)
@@ -417,6 +444,21 @@ def main():
             "peak_gpu_mem_gb_p95": round(percentile(per_req_peak, 0.95), 2),
             "em_rate": round(sum(per_req_em) / max(len(per_req_em), 1), 4),
         }
+        wandb.log(
+            {
+                "context_tokens": ctx_len,
+                "quality/em_rate": ctx_summary["em_rate"],
+                "latency/latency_ms_p50": ctx_summary["latency_ms_p50"],
+                "latency/latency_ms_p95": ctx_summary["latency_ms_p95"],
+                "latency/ttft_ms_p50": ctx_summary["ttft_ms_p50"],
+                "latency/ttft_ms_p95": ctx_summary["ttft_ms_p95"],
+                "throughput/ms_per_token_p50": ctx_summary["ms_per_token_p50"],
+                "throughput/ms_per_token_p95": ctx_summary["ms_per_token_p95"],
+                "throughput/tok_per_s_p50": ctx_summary["tok_per_s_p50"],
+                "throughput/tok_per_s_p95": ctx_summary["tok_per_s_p95"],
+                "memory/peak_gpu_mem_gb_p95": ctx_summary["peak_gpu_mem_gb_p95"],
+            }
+        )
         print(json.dumps(ctx_summary, indent=2))
         ctx_summaries.append(ctx_summary)
         with open(jsonl_path, "a") as jf:
@@ -494,7 +536,16 @@ def main():
     with open(full_json_path, "w") as f:
         json.dump(full, f, indent=2)
 
+    # Convert per-request rows to a W&B table (optional)
+    if all_rows:
+        columns = sorted(all_rows[0].keys())
+        table = wandb.Table(columns=columns)
+        for row in all_rows:
+            table.add_data(*(row.get(col) for col in columns))
+        wandb.log({"per_request_metrics": table})
+
+    wandb.finish()
+
 
 if __name__ == "__main__":
     main()
-
