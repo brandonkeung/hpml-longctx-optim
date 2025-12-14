@@ -12,18 +12,20 @@ import wandb
 # ---------------------------
 # Config (env-overridable)
 # ---------------------------
-# MODEL_ID = os.environ.get("MODEL_ID", "mistralai/Mistral-7B-Instruct-v0.3")       # Qwen/Qwen1.5-1.8B-Chat
-MODEL_ID = os.environ.get("MODEL_ID", "Qwen/Qwen1.5-1.8B-Chat")
+MODEL_ID = os.environ.get("MODEL_ID", "mistralai/Mistral-7B-Instruct-v0.3")       # Qwen/Qwen1.5-1.8B-Chat
+USE_SUMMARY = os.environ.get("USE_SUMMARY", "false").lower() == "true"
+
+# MODEL_ID = os.environ.get("MODEL_ID", "Qwen/Qwen1.5-1.8B-Chat")
 DTYPE = getattr(torch, os.environ.get("DTYPE", "bfloat16"))
 DEVICE_MAP = os.environ.get("DEVICE_MAP", "auto")
 N_SAMPLES = int(os.environ.get("N_SAMPLES", "50"))
 BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "1"))
-CONTEXTS = [int(x) for x in os.environ.get("CONTEXTS", "2048,8192,16384").split(",")]
+CONTEXTS = [int(x) for x in os.environ.get("CONTEXTS", "2048,8192,16384,32768").split(",")] # "2048,8192,16384"
 MAX_NEW_TOKENS = int(os.environ.get("MAX_NEW_TOKENS", "64"))
-ATTN_IMPL = os.environ.get("ATTN_IMPL", "eager").lower()  # eager | sdpa | flash2
+ATTN_IMPL = os.environ.get("ATTN_IMPL", "flash2").lower()  # eager | sdpa | flash2
 LOGDIR = os.environ.get("LOGDIR", "./logs/narrativeqa")
 USE_4BIT = os.environ.get("USE_4BIT", "false").lower() == "true"
-ENTITY = "bk2951-columbia-university"
+ENTITY = "andyyang903"
 # --- KV compression mode ---
 #   none        -> vanilla generate()
 #   l2          -> manual decode loop with L2-based pruning of KV values
@@ -36,12 +38,34 @@ SKIP_LAYERS = [int(x) for x in os.environ.get("SKIP_LAYERS", "0,1").split(",") i
 # ---------------------------
 # Helpers
 # ---------------------------
-def format_prompt(question, context):
-    return (
-        "You are a QA system. Use the context to answer the question.\n"
-        "Answer with a short phrase or single entity only. No punctuation. No explanation.\n\n"
-        f"Context:\n{context}\n\nQuestion: {question}\nAnswer:"
-    )
+# def format_prompt(question, context):
+#     return (
+        
+#         f"Context:\n{context}\n\n"
+#         f"Question: {question}\n"
+#         "Answer:"
+#     )
+
+
+PREFIX = (
+    "You are answering questions about a story.\n"
+    "Use ONLY the provided context. If the answer is not in the context, say: Unknown.\n"
+    "Answer with one phrase, be concise and factual. DO NOT use complete sentences.\n\n Context:\n"
+)
+def build_prompt(qtext, full_context, tok, max_len):
+    suffix = f"\n\nQuestion: {qtext}\nAnswer:"
+    prefix_ids = tok.encode(PREFIX, add_special_tokens=False)
+    suffix_ids = tok.encode(suffix, add_special_tokens=False)
+
+    budget_for_ctx = max_len - len(prefix_ids) - len(suffix_ids) - 2
+    budget_for_ctx = max(budget_for_ctx, 0)
+
+    ctx_ids = tok.encode(full_context, add_special_tokens=False)[:budget_for_ctx]
+    ctx_text = tok.decode(ctx_ids, skip_special_tokens=True)
+
+    return PREFIX + ctx_text + suffix
+
+
 
 def make_context_text(text, target_tokens, tokenizer):
     # tokenize and trim to target token budget
@@ -57,6 +81,20 @@ def percentile(values, p):
     k = (len(values) - 1) * p
     f, c = math.floor(k), math.ceil(k)
     return values[int(k)] if f == c else values[f] * (c - k) + values[c] * (k - f)
+
+def is_answered(pred: str) -> bool:
+    if pred is None:
+        return False
+    p = pred.strip()
+    if not p:
+        return False
+    if p.lower() == "unknown":
+        return False
+    # optional: ignore 1-char garbage
+    if len(p) <= 1:
+        return False
+    return True
+
 
 # --- EM (Exact Match) normalization ---
 def normalize_answer(s: str) -> str:
@@ -119,22 +157,23 @@ def load_narrativeqa_examples(n):
         else:
             golds = []
 
-        # Context: prefer summary; fall back to document text if needed
+        # Context: choose summary vs full text
         doc = ex.get("document") or {}
-        summary = doc.get("summary") or ""
+
+        summary = doc.get("summary", "")
         if isinstance(summary, dict):
-            # some configs store {text: "..."}
             summary = summary.get("text", "") or ""
-        context_text = summary.strip()
-        if not context_text:
-            # try full text
-            full_text = doc.get("text") or ""
-            if isinstance(full_text, dict):
-                full_text = full_text.get("text", "") or ""
-            context_text = full_text.strip()
+
+        full_text = doc.get("text", "")
+        if isinstance(full_text, dict):
+            full_text = full_text.get("text", "") or ""
+
+        # breakpoint()
+        context_text = (summary if USE_SUMMARY else full_text).strip()
 
         if q and context_text:
             examples.append((q, context_text, golds or [""]))
+
     return examples
 
 
@@ -179,7 +218,7 @@ def main():
     # --- W&B init ---
     wandb.init(
         entity=ENTITY,
-        project="Long-Context-Optimization",
+        project="testrun",
         name=run_id,
         config={
             "model_id": MODEL_ID,
@@ -237,17 +276,23 @@ def main():
         ctx_preds = []
         ctx_refs = []
 
+        answered_count = 0
+        total_count = 0
+
         for i in range(0, len(nq_examples), BATCH_SIZE):
             batch = nq_examples[i:i+BATCH_SIZE]
             prompts = []
             golds_list = []
             for (q, sentences, golds) in batch:
-                context_text = make_context_text(sentences, ctx_len, tok)
-                prompts.append(format_prompt(q, context_text))
+                # breakpoint()
+                # context_text = make_context_text(sentences, ctx_len, tok)
+                # prompts.append(format_prompt(q['text'], context_text))
+                prompt = build_prompt(q["text"], sentences, tok, ctx_len)
+                prompts.append(prompt)
                 golds_list.append(golds)
                 
             inputs = tok(prompts, return_tensors="pt", padding=True,
-                        truncation=True, max_length=ctx_len).to(model.device)
+                        truncation=False).to(model.device)
             
             try:
                 torch.cuda.synchronize()
@@ -334,6 +379,11 @@ def main():
                     ctx_preds.append(pred)
                     ctx_refs.append(golds)  # golds is already a list of reference strings
 
+                    total_count += 1
+                    if is_answered(pred):
+                        answered_count += 1
+
+
 
                 # per-request row (aggregate for the batch)
                 all_rows.append({
@@ -374,6 +424,7 @@ def main():
                 continue
         
         # Compute quality metrics for this context length
+        # breakpoint()
         meteor_res = meteor_metric.compute(
             predictions=ctx_preds,
             references=ctx_refs,   # list of list-of-strings
@@ -388,6 +439,7 @@ def main():
         rouge1 = rouge_res["rouge1"]
         rougeL = rouge_res["rougeL"]
 
+        pct_answered = (answered_count / max(total_count, 1)) * 100.0
 
         # Context summary
         ctx_summary = {
@@ -415,7 +467,10 @@ def main():
             "peak_gpu_mem_gb_p95": round(percentile(per_req_peak, 0.95), 2),
             "meteor": round(meteor_score, 4),
             "rouge1": round(rouge1, 4),
-            "rougeL": round(rougeL, 4),        
+            "rougeL": round(rougeL, 4),
+            "answered_pct": round(pct_answered, 2),
+            "answered_count": answered_count,
+            "total_count": total_count,        
         }
 
         wandb.log(
@@ -424,6 +479,8 @@ def main():
                 "quality/meteor": meteor_score,
                 "quality/rouge1": rouge1,
                 "quality/rougeL": rougeL,
+                "quality/answered_pct": pct_answered,
+                "quality/answered_count": answered_count,
                 "latency/latency_ms_p50": ctx_summary["latency_ms_p50"],
                 "latency/latency_ms_p95": ctx_summary["latency_ms_p95"],
                 "latency/ttft_ms_p50": ctx_summary["ttft_ms_p50"],
@@ -445,9 +502,11 @@ def main():
         print("\n=== Sample outputs for context length", ctx_len, "===")
         for j in range(min(3, len(nq_examples))):
             q, context_text, golds = nq_examples[j]
-            ctx_trim = make_context_text(context_text, ctx_len, tok)
-            prompt = format_prompt(q, ctx_trim)
-            inputs_1 = tok(prompt, return_tensors="pt", truncation=True, max_length=ctx_len).to(model.device)
+            # breakpoint()
+            # ctx_trim = make_context_text(context_text, ctx_len, tok)
+            # prompt = format_prompt(q['text'], ctx_trim)
+            prompt = build_prompt(q["text"], context_text, tok, ctx_len)
+            inputs_1 = tok(prompt, return_tensors="pt", truncation=False).to(model.device)
 
             if KV_MODE == "l2":
                 out, _ = generate_with_l2_compress(
@@ -468,7 +527,7 @@ def main():
                 pred_text = tok.decode(out[0], skip_special_tokens=True)
 
             pred = pred_text.split("Answer:", 1)[-1].strip().split("\n", 1)[0].split(".")[0].strip()
-            print(f"Q: {q}")
+            print(f"Q: {q['text']}")
             print(f"Pred: {pred}")
             print(f"Gold: {golds}\n")
         print("=====================================================\n")
