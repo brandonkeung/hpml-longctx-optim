@@ -33,18 +33,27 @@ import wandb
 # ---------------------------
 # Config (env-overridable)
 # ---------------------------
-# MODEL_ID = os.environ.get("MODEL_ID", "mistralai/Mistral-7B-Instruct-v0.3")     # Qwen/Qwen1.5-1.8B-Chat
-MODEL_ID = os.environ.get("MODEL_ID", "Qwen/Qwen1.5-1.8B-Chat")
+MODEL_ID = os.environ.get("MODEL_ID", "mistralai/Mistral-7B-Instruct-v0.3")     # Qwen/Qwen1.5-1.8B-Chat
+# MODEL_ID = os.environ.get("MODEL_ID", "Qwen/Qwen1.5-1.8B-Chat")
 DTYPE = getattr(torch, os.environ.get("DTYPE", "bfloat16"))
 DEVICE_MAP = os.environ.get("DEVICE_MAP", "auto")
 N_SAMPLES = int(os.environ.get("N_SAMPLES", "50"))
 BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "1"))
 CONTEXTS = [int(x) for x in os.environ.get("CONTEXTS", "2048,4096,8192,16384,32768").split(",")]
 MAX_NEW_TOKENS = int(os.environ.get("MAX_NEW_TOKENS", "64"))
-ATTN_IMPL = os.environ.get("ATTN_IMPL", "eager").lower()  # eager | sdpa | flash2
+ATTN_IMPL = os.environ.get("ATTN_IMPL", "sdpa").lower()  # eager | sdpa | flash2
 LOGDIR = os.environ.get("LOGDIR", "./logs/longbench")
-USE_4BIT = os.environ.get("USE_4BIT", "false").lower() == "true"
-ENTITY = "bk2951-columbia-university"
+
+# QUANTIZATION SETTINGS
+QUANT_MODE = os.environ.get("QUANT_MODE", "bnb4").lower()   # none | bnb8 | bnb4
+BNB_4BIT_TYPE = os.environ.get("BNB_4BIT_TYPE", "nf4").lower()  # nf4 | fp4
+BNB_4BIT_DOUBLE_QUANT = os.environ.get("BNB_4BIT_DOUBLE_QUANT", "true").lower() == "true"
+
+BNB_4BIT_COMPUTE_DTYPE_STR = os.environ.get("BNB_4BIT_COMPUTE_DTYPE", "bfloat16").lower()
+BNB_4BIT_COMPUTE_DTYPE = torch.bfloat16 if BNB_4BIT_COMPUTE_DTYPE_STR in ("bf16", "bfloat16") else torch.float16
+
+LLM_INT8_THRESHOLD = float(os.environ.get("LLM_INT8_THRESHOLD", "6.0"))
+ENTITY = "andyyang903"
 
 DATASET_ID = os.environ.get("DATASET_ID", "zai-org/LongBench-v2")
 SPLIT = os.environ.get("SPLIT", f"train[:{N_SAMPLES}]")
@@ -196,19 +205,32 @@ def main():
     else:
         raise ValueError(f"Unknown ATTN_IMPL: {ATTN_IMPL}")
     
-    if USE_4BIT:
-        print("[info] Activating 4-bit NF4 Quantization")
+    if QUANT_MODE == "none":
+        # Your current baseline
+        load_kwargs["torch_dtype"] = DTYPE
+
+    elif QUANT_MODE == "bnb8":
+        print("[info] Activating 8-bit (bitsandbytes / LLM.int8)")
+        load_kwargs["quantization_config"] = BitsAndBytesConfig(
+            load_in_8bit=True,
+            llm_int8_threshold=LLM_INT8_THRESHOLD,
+            # optional knobs you can add later if you want:
+            # llm_int8_enable_fp32_cpu_offload=False,
+        )
+
+    elif QUANT_MODE == "bnb4":
+        print(f"[info] Activating 4-bit (bitsandbytes) type={BNB_4BIT_TYPE} double_quant={BNB_4BIT_DOUBLE_QUANT} compute={BNB_4BIT_COMPUTE_DTYPE}")
         load_kwargs["quantization_config"] = BitsAndBytesConfig(
             load_in_4bit=True,
-            bnb_4bit_compute_dtype=DTYPE,  # usage: bfloat16 or float16
-            bnb_4bit_quant_type="nf4",     # Best accuracy
-            bnb_4bit_use_double_quant=True # Saves an extra 0.4 bits per parameter
+            bnb_4bit_compute_dtype=BNB_4BIT_COMPUTE_DTYPE,
+            bnb_4bit_quant_type=BNB_4BIT_TYPE,  # "nf4" or "fp4"
+            bnb_4bit_use_double_quant=BNB_4BIT_DOUBLE_QUANT,
         )
+
     else:
-        # Only set torch_dtype explicitly if NOT using 4bit (BnB handles storage type internally)
-        load_kwargs["torch_dtype"] = DTYPE
+        raise ValueError(f"Unknown QUANT_MODE: {QUANT_MODE}")
     
-    run_id = f"{model_name_tag}_{attn_label}_N{N_SAMPLES}_B{BATCH_SIZE}_{KV_MODE}_{ts}"
+    run_id = f"{model_name_tag}_{attn_label}_N{N_SAMPLES}_B{BATCH_SIZE}_KV{KV_MODE}_Q{QUANT_MODE}_{ts}"
     jsonl_path = os.path.join(LOGDIR, f"{run_id}.jsonl")
     full_json_path = os.path.join(LOGDIR, f"{run_id}_full.json")
     
@@ -217,7 +239,7 @@ def main():
     # --- W&B init ---
     wandb.init(
         entity=ENTITY,
-        project="Long-Context-Optimization",
+        project="testrun-longbench",
         name=run_id,
         config={
             "model_id": MODEL_ID,
@@ -225,7 +247,11 @@ def main():
             "device_map": DEVICE_MAP,
             "attn_impl": attn_label,
             "kv_mode": KV_MODE,
-            "use_4bit": USE_4BIT,
+            "quant_mode": QUANT_MODE,
+            "bnb_4bit_type": BNB_4BIT_TYPE if QUANT_MODE == "bnb4" else None,
+            "bnb_4bit_double_quant": BNB_4BIT_DOUBLE_QUANT if QUANT_MODE == "bnb4" else None,
+            "bnb_4bit_compute_dtype": str(BNB_4BIT_COMPUTE_DTYPE) if QUANT_MODE == "bnb4" else None,
+            "llm_int8_threshold": LLM_INT8_THRESHOLD if QUANT_MODE == "bnb8" else None,
             "n_samples": N_SAMPLES,
             "batch_size": BATCH_SIZE,
             "contexts": CONTEXTS,
@@ -242,7 +268,7 @@ def main():
     tok = AutoTokenizer.from_pretrained(MODEL_ID)
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
-    print(f"[info] Loading {MODEL_ID} (attn={attn_label}, dtype={DTYPE}, device_map={DEVICE_MAP}, kv_mode={KV_MODE}, use_4bit={USE_4BIT})")
+    print(f"[info] Loading {MODEL_ID} (attn={attn_label}, dtype={DTYPE}, device_map={DEVICE_MAP}, kv_mode={KV_MODE}, quantization={QUANT_MODE})")
     model = AutoModelForCausalLM.from_pretrained(MODEL_ID, **load_kwargs)
     print("Attention impl in config:", getattr(model.config, "_attn_implementation", None))
     try:
@@ -280,8 +306,12 @@ def main():
             golds_list = []
             for (q, context, choices, gold_letter) in batch:
                 context_text = make_context_text(context, ctx_len, tok)
-                prompts.append(format_prompt(q, context_text, choices))
+                prompt = format_prompt(q, context_text, choices)
+                prompts.append(prompt)
+                # breakpoint()
                 golds_list.append(gold_letter)
+
+                # breakpoint()
             
             inputs = tok(prompts, return_tensors="pt", padding=True,
                         truncation=True, max_length=ctx_len).to(model.device)
@@ -375,6 +405,7 @@ def main():
                 # EM scoring
                 for j, gold_letter in enumerate(golds_list):
                     pred_letter = extract_choice_letter(texts[j])
+                    # breakpoint()
                     is_em = 1 if choice_exact_match(pred_letter, gold_letter) else 0
                     per_req_em.append(is_em)
                     em_hits += is_em
@@ -424,7 +455,11 @@ def main():
             "model": MODEL_ID,
             "attn": attn_label,
             "kv_mode": KV_MODE,
-            "use_4bit": USE_4BIT,
+            "quant_mode": QUANT_MODE,
+            "bnb_4bit_type": BNB_4BIT_TYPE if QUANT_MODE == "bnb4" else None,
+            "bnb_4bit_double_quant": BNB_4BIT_DOUBLE_QUANT if QUANT_MODE == "bnb4" else None,
+            "bnb_4bit_compute_dtype": str(BNB_4BIT_COMPUTE_DTYPE) if QUANT_MODE == "bnb4" else None,
+            "llm_int8_threshold": LLM_INT8_THRESHOLD if QUANT_MODE == "bnb8" else None,
             "context_tokens": ctx_len,
             "n_requests": math.ceil(len(examples)/BATCH_SIZE),
             "latency_ms_p50": round(percentile(per_req_lat, 0.50), 2),
@@ -497,6 +532,7 @@ def main():
                 print(f"Q: {q[:100]}...")
                 print(f"Pred: {pred_letter}  (gen: {gen_text[:100]!r})")
                 print(f"Gold: {gold_letter}\n")
+                # breakpoint()
             except (RuntimeError, torch.OutOfMemoryError) as e:
                 print(f"[debug] OOM while generating sample output: {str(e)[:160]}")
                 torch.cuda.empty_cache()
@@ -506,7 +542,11 @@ def main():
     # Final overall summary
     summary = {
         "run_id": run_id,
-        "use_4bit": USE_4BIT,
+        "quant_mode": QUANT_MODE,
+        "bnb_4bit_type": BNB_4BIT_TYPE if QUANT_MODE == "bnb4" else None,
+        "bnb_4bit_double_quant": BNB_4BIT_DOUBLE_QUANT if QUANT_MODE == "bnb4" else None,
+        "bnb_4bit_compute_dtype": str(BNB_4BIT_COMPUTE_DTYPE) if QUANT_MODE == "bnb4" else None,
+        "llm_int8_threshold": LLM_INT8_THRESHOLD if QUANT_MODE == "bnb8" else None,
         "model": MODEL_ID,
         "attn": attn_label,
         "kv_mode": KV_MODE,
@@ -522,7 +562,11 @@ def main():
     full = {
         "run_meta": {
             "run_id": run_id, "model": MODEL_ID, "attn": attn_label,
-            "use_4bit": USE_4BIT,
+            "quant_mode": QUANT_MODE,
+            "bnb_4bit_type": BNB_4BIT_TYPE if QUANT_MODE == "bnb4" else None,
+            "bnb_4bit_double_quant": BNB_4BIT_DOUBLE_QUANT if QUANT_MODE == "bnb4" else None,
+            "bnb_4bit_compute_dtype": str(BNB_4BIT_COMPUTE_DTYPE) if QUANT_MODE == "bnb4" else None,
+            "llm_int8_threshold": LLM_INT8_THRESHOLD if QUANT_MODE == "bnb8" else None,
             "dtype": str(DTYPE), "device_map": DEVICE_MAP,
             "contexts": CONTEXTS, "n_samples": len(examples),
             "batch_size": BATCH_SIZE, "max_new_tokens": MAX_NEW_TOKENS,
