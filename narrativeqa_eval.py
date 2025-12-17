@@ -211,7 +211,10 @@ def main():
         load_kwargs["attn_implementation"] = "flash_attention_2"
     elif ATTN_IMPL == "sdpa":
         attn_label = "sdpa"
-        torch.backends.cuda.sdp_kernel(enable_flash=True, enable_mem_efficient=False, enable_math=False)
+        # Use vanilla PyTorch math backend (not flash or mem-efficient)
+        torch.backends.cuda.enable_flash_sdp(False)
+        torch.backends.cuda.enable_mem_efficient_sdp(False)
+        torch.backends.cuda.enable_math_sdp(True)
         load_kwargs["attn_implementation"] = "sdpa"
     elif ATTN_IMPL == "eager":
         attn_label = "eager"
