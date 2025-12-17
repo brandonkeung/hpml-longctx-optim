@@ -46,7 +46,7 @@ BNB_4BIT_COMPUTE_DTYPE = torch.bfloat16 if BNB_4BIT_COMPUTE_DTYPE_STR in ("bf16"
 
 LLM_INT8_THRESHOLD = float(os.environ.get("LLM_INT8_THRESHOLD", "6.0"))
 
-ENTITY = "andyyang903"
+ENTITY = "bk2951-columbia-university"
 # --- KV compression mode ---
 #   none        -> vanilla generate()
 #   l2          -> manual decode loop with L2-based pruning of KV values
@@ -264,7 +264,7 @@ def main():
     # --- W&B init ---
     wandb.init(
         entity=ENTITY,
-        project="testrun",
+        project="Long-Context-Optimization",
         name=run_id,
         config={
             "model_id": MODEL_ID,

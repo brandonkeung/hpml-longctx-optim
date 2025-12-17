@@ -1,0 +1,154 @@
+_wandb:
+    value:
+        cli_version: 0.23.1
+        e:
+            5gks2jccd8hqtzl3hdkc10u98vpn053j:
+                codePath: narrativeqa_eval.py
+                codePathLocal: narrativeqa_eval.py
+                cpu_count: 96
+                cpu_count_logical: 192
+                cudaVersion: "12.9"
+                disk:
+                    /:
+                        total: "74906075136"
+                        used: "48713773056"
+                email: bk2951@columbia.edu
+                executable: /insomnia001/home/bk2951/hpml-longctx-optim/.venv/bin/python
+                git:
+                    commit: 356d6762884e781dec6da1532956f54c781324cf
+                    remote: https://github.com/brandonkeung/hpml-longctx-optim.git
+                gpu: NVIDIA RTX A6000
+                gpu_count: 1
+                gpu_nvidia:
+                    - architecture: Ampere
+                      cudaCores: 10752
+                      memoryTotal: "51527024640"
+                      name: NVIDIA RTX A6000
+                      uuid: GPU-24da10de-a64d-aae3-b045-3e49ffd6a306
+                host: ins080
+                memory:
+                    total: "1081451159552"
+                os: Linux-5.14.0-362.8.1.el9_3.x86_64-x86_64-with-glibc2.34
+                program: /insomnia001/home/bk2951/hpml-longctx-optim/narrativeqa_eval.py
+                python: CPython 3.9.18
+                root: /insomnia001/home/bk2951/hpml-longctx-optim
+                slurm:
+                    cluster_name: insomnia
+                    conf: /etc/slurm/slurm.conf
+                    cpus_on_node: "2"
+                    gpus_on_node: "1"
+                    gtids: "0"
+                    job_account: edu
+                    job_cpus_per_node: "2"
+                    job_end_time: "1765859147"
+                    job_gid: "500"
+                    job_group: user
+                    job_id: "5953740"
+                    job_name: bash
+                    job_nodelist: ins080
+                    job_num_nodes: "1"
+                    job_partition: short
+                    job_qos: interactive
+                    job_start_time: "1765851947"
+                    job_uid: "560037"
+                    job_user: bk2951
+                    jobid: "5953740"
+                    launch_node_ipaddr: 10.197.95.249
+                    localid: "0"
+                    nnodes: "1"
+                    nodeid: "0"
+                    nodelist: ins080
+                    nprocs: "1"
+                    ntasks: "1"
+                    oom_kill_step: "0"
+                    prio_process: "0"
+                    procid: "0"
+                    pty_port: "40583"
+                    pty_win_col: "123"
+                    pty_win_row: "26"
+                    srun_comm_host: 10.197.95.249
+                    srun_comm_port: "42745"
+                    step_gpus: "6"
+                    step_id: "0"
+                    step_launcher_port: "42745"
+                    step_nodelist: ins080
+                    step_num_nodes: "1"
+                    step_num_tasks: "1"
+                    step_tasks_per_node: "1"
+                    stepid: "0"
+                    submit_dir: /insomnia001/home/bk2951/hpml-longctx-optim
+                    submit_host: 2402-login-001
+                    task_pid: "1043897"
+                    tasks_per_node: "1"
+                    topology_addr: ins080
+                    topology_addr_pattern: node
+                    umask: "0027"
+                startedAt: "2025-12-16T02:57:16.860530Z"
+                writerId: 5gks2jccd8hqtzl3hdkc10u98vpn053j
+        m: []
+        python_version: 3.9.18
+        t:
+            "1":
+                - 1
+                - 11
+                - 49
+                - 51
+                - 71
+                - 100
+            "2":
+                - 1
+                - 11
+                - 49
+                - 51
+                - 71
+                - 100
+            "3":
+                - 2
+                - 13
+                - 16
+            "4": 3.9.18
+            "5": 0.23.1
+            "6": 4.57.3
+            "12": 0.23.1
+            "13": linux-x86_64
+attn_impl:
+    value: flash2
+batch_size:
+    value: 1
+bnb_4bit_compute_dtype:
+    value: null
+bnb_4bit_double_quant:
+    value: null
+bnb_4bit_type:
+    value: null
+contexts:
+    value:
+        - 2048
+        - 4096
+        - 8192
+        - 16384
+        - 32768
+device_map:
+    value: auto
+dtype:
+    value: torch.bfloat16
+keep_ratio:
+    value: 0.7
+kv_mode:
+    value: none
+llm_int8_threshold:
+    value: null
+max_new_tokens:
+    value: 64
+model_id:
+    value: mistralai/Mistral-7B-Instruct-v0.3
+n_samples:
+    value: 100
+prune_after:
+    value: 512
+quant_mode:
+    value: none
+skip_layers:
+    value:
+        - 0
+        - 1

@@ -62,7 +62,7 @@ BNB_4BIT_COMPUTE_DTYPE_STR = os.environ.get("BNB_4BIT_COMPUTE_DTYPE", "bfloat16"
 BNB_4BIT_COMPUTE_DTYPE = torch.bfloat16 if BNB_4BIT_COMPUTE_DTYPE_STR in ("bf16", "bfloat16") else torch.float16
 
 LLM_INT8_THRESHOLD = float(os.environ.get("LLM_INT8_THRESHOLD", "6.0"))
-ENTITY = "andyyang903"
+ENTITY = "bk2951-columbia-university"
 
 DATASET_ID = os.environ.get("DATASET_ID", "zai-org/LongBench-v2")
 SPLIT = os.environ.get("SPLIT", f"train[:{N_SAMPLES}]")
@@ -258,8 +258,8 @@ def main():
 
     # --- W&B init ---
     wandb.init(
-        entity="ds4363-columbia-university",
-        project="HPML Final Project",
+        entity=ENTITY,
+        project="Long-Context-Optimization",
         name=run_id,
         config={
             "model_id": MODEL_ID,
