@@ -357,7 +357,13 @@ def enable_flex_attention_dense_causal(model):
   <em>Figure 3: Quantization results (8-bit vs 4-bit vs baseline) across memory/performance/quality metrics.</em>
 </p>
 
-Commentary here
+Key Takeaways:
+- Long-context inference is fundamentally memory-bound
+  - Attention backend and KV-cache size determine scalability; FlashAttention-2 and FlexAttention remain stable at long contexts where SDPA hits memory limits.
+- KV-cache pruning is the most effective performance optimization
+  - L2-norm pruning yields near-linear throughput gains and safely removes up to 75% of context with minimal quality impact.
+- Quantization saves VRAM but offers inconsistent speedups
+  - int8 slows inference due to kernel overhead, while NF4 provides a better tradeoff between memory savings, performance, and quality.
 
 ---
 
