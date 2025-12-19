@@ -335,9 +335,39 @@ def enable_flex_attention_dense_causal(model):
 
 
 
+## 10. Results and Observations
 
 
-## 10. References
+
+<p align="center">
+  <img src="assets/attention_results.png" alt="Attention results" width="900">
+  <br>
+  <em>Figure 1: Attention backend comparison (SDPA vs FlashAttention-2 vs FlexAttention).</em>
+</p>
+
+<p align="center">
+  <img src="assets/kv_results.png" alt="KV-cache compression results" width="900">
+  <br>
+  <em>Figure 2: L2 KV-cache compression results for 32k context length (memory/latency/throughput/quality).</em>
+</p>
+
+<p align="center">
+  <img src="assets/quant_results.png" alt="Quantization results" width="900">
+  <br>
+  <em>Figure 3: Quantization results (8-bit vs 4-bit vs baseline) across memory/performance/quality metrics.</em>
+</p>
+
+Commentary here
+
+---
+
+## 11. WandB Links:
+- Mistral: https://wandb.ai/ds4363-columbia-university/HPML%20Final%20Project/workspace
+- Qwen: https://wandb.ai/jd4136-columbia-university/Long-Context-Optimization/
+
+---
+
+## 12. References
 
 - [FlashAttention-2](https://github.com/Dao-AILab/flash-attention) - Dao et al., 2023
 - [PyTorch FlexAttention](https://pytorch.org/blog/flexattention/) - PyTorch 2.5+
@@ -347,7 +377,7 @@ def enable_flex_attention_dense_causal(model):
 
 ---
 
-## 11. Team & Acknowledgments
+## 13. Team & Acknowledgments
 
 **COMS E6998: High Performance Machine Learning**  
 Columbia University, Fall 2025
