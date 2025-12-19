@@ -1,24 +1,18 @@
 """
-LongBench Evaluation with KV Cache Compression Support
+Longbenchv2 inference benchmark for long-context LLM optimization.
 
-This script evaluates models on the LongBench dataset with optional L2 KV cache compression.
-It follows the same pattern as narrativeqa_eval.py with proper TTFT measurement.
+Runs Longbenchv2 validation prompts at one or more context lengths (CONTEXTS) and
+compares attention backends (ATTN_IMPL: eager|sdpa|flash2|flex), optional L2
+KV-cache pruning (KV_MODE=l2), and optional bitsandbytes quantization
+(QUANT_MODE: none|bnb8|bnb4).
 
-Usage:
-    # Vanilla (no compression)
-    python longbench_kv_eval.py
-    
-    # With L2 compression
-    KV_MODE=l2 KEEP_RATIO=0.7 PRUNE_AFTER=512 python longbench_kv_eval.py
-    
-Environment Variables:
-    MODEL_ID       - HuggingFace model ID (default: mistralai/Mistral-7B-Instruct-v0.3)
-    N_SAMPLES      - Number of samples to evaluate (default: 50)
-    CONTEXTS       - Comma-separated context lengths (default: 2048,8192,16384)
-    KV_MODE        - none | l2 (default: none)
-    KEEP_RATIO     - For L2: fraction to keep (default: 0.7)
-    PRUNE_AFTER    - For L2: start pruning after N tokens (default: 512)
-    SKIP_LAYERS    - For L2: layers to skip (default: 0,1)
+Logs per-context summaries (latency p50/p95, TTFT p50/p95, throughput, decode-only
+metrics, peak GPU memory p95, and quality: METEOR/ROUGE) to W&B and writes:
+  - LOGDIR/{run_id}.jsonl (one line per context)
+  - LOGDIR/{run_id}_full.json (full run metadata + per-request rows)
+
+Example:
+  ATTN_IMPL=flash2 CONTEXTS=2048,8192 N_SAMPLES=50 python longbench_kv_eval.py
 """
 
 import os, time, json, math, random, datetime, re
@@ -34,7 +28,7 @@ import wandb
 try:
     from torch.nn.attention.flex_attention import flex_attention, create_block_mask  # noqa: F401
     _HAS_FLEX_ATTENTION = True
-except Exception:  # pragma: no cover - flex kernel optional
+except Exception:  # pragma: no cover - flex kernel
     flex_attention = None
     create_block_mask = None
     _HAS_FLEX_ATTENTION = False
@@ -68,8 +62,8 @@ DATASET_ID = os.environ.get("DATASET_ID", "zai-org/LongBench-v2")
 SPLIT = os.environ.get("SPLIT", f"train[:{N_SAMPLES}]")
 
 # --- KV compression mode ---
-#   none        -> vanilla generate()
-#   l2          -> manual decode loop with L2-based pruning of KV values
+#   none -> vanilla generate()
+#   l2 -> manual decode loop with L2-based pruning of KV values
 KV_MODE = os.environ.get("KV_MODE", "none").lower()  # none | l2
 # For KV_MODE=l2
 KEEP_RATIO = float(os.environ.get("KEEP_RATIO", "0.7"))     # keep top-% by magnitude
@@ -226,7 +220,6 @@ def main():
         raise ValueError(f"Unknown ATTN_IMPL: {ATTN_IMPL}")
     
     if QUANT_MODE == "none":
-        # Your current baseline
         load_kwargs["torch_dtype"] = DTYPE
 
     elif QUANT_MODE == "bnb8":
@@ -234,8 +227,6 @@ def main():
         load_kwargs["quantization_config"] = BitsAndBytesConfig(
             load_in_8bit=True,
             llm_int8_threshold=LLM_INT8_THRESHOLD,
-            # optional knobs you can add later if you want:
-            # llm_int8_enable_fp32_cpu_offload=False,
         )
 
     elif QUANT_MODE == "bnb4":
@@ -600,7 +591,7 @@ def main():
     with open(full_json_path, "w") as f:
         json.dump(full, f, indent=2)
 
-    # Convert per-request rows to a W&B table (optional)
+    # Convert per-request rows to a W&B table
     if all_rows:
         columns = sorted(all_rows[0].keys())
         table = wandb.Table(columns=columns)

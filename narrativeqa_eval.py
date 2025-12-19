@@ -1,3 +1,20 @@
+"""
+NarrativeQA inference benchmark for long-context LLM optimization.
+
+Runs NarrativeQA validation prompts at one or more context lengths (CONTEXTS) and
+compares attention backends (ATTN_IMPL: eager|sdpa|flash2|flex), optional L2
+KV-cache pruning (KV_MODE=l2), and optional bitsandbytes quantization
+(QUANT_MODE: none|bnb8|bnb4).
+
+Logs per-context summaries (latency p50/p95, TTFT p50/p95, throughput, decode-only
+metrics, peak GPU memory p95, and quality: METEOR/ROUGE) to W&B and writes:
+  - LOGDIR/{run_id}.jsonl (one line per context)
+  - LOGDIR/{run_id}_full.json (full run metadata + per-request rows)
+
+Example:
+  ATTN_IMPL=flash2 CONTEXTS=2048,8192 N_SAMPLES=50 python narrativeqa_eval.py
+"""
+
 import os, time, json, math, random, datetime, re
 import torch
 from datasets import load_dataset
@@ -12,7 +29,7 @@ import wandb
 try:
     from torch.nn.attention.flex_attention import flex_attention, create_block_mask  # noqa: F401
     _HAS_FLEX_ATTENTION = True
-except Exception:  # pragma: no cover - flex kernel optional
+except Exception:  # pragma: no cover - flex kernel
     flex_attention = None
     create_block_mask = None
     _HAS_FLEX_ATTENTION = False
@@ -47,9 +64,10 @@ BNB_4BIT_COMPUTE_DTYPE = torch.bfloat16 if BNB_4BIT_COMPUTE_DTYPE_STR in ("bf16"
 LLM_INT8_THRESHOLD = float(os.environ.get("LLM_INT8_THRESHOLD", "6.0"))
 
 ENTITY = "bk2951-columbia-university"
+
 # --- KV compression mode ---
-#   none        -> vanilla generate()
-#   l2          -> manual decode loop with L2-based pruning of KV values
+#   none -> vanilla generate()
+#   l2 -> manual decode loop with L2-based pruning of KV values
 KV_MODE = os.environ.get("KV_MODE", "none").lower()  # none | l2
 # For KV_MODE=l2
 KEEP_RATIO = float(os.environ.get("KEEP_RATIO", "0.7"))     # keep top-% by magnitude
@@ -59,14 +77,6 @@ SKIP_LAYERS = [int(x) for x in os.environ.get("SKIP_LAYERS", "0,1").split(",") i
 # ---------------------------
 # Helpers
 # ---------------------------
-# def format_prompt(question, context):
-#     return (
-        
-#         f"Context:\n{context}\n\n"
-#         f"Question: {question}\n"
-#         "Answer:"
-#     )
-
 
 PREFIX = (
     "You are answering questions about a story.\n"
@@ -87,14 +97,6 @@ def build_prompt(qtext, full_context, tok, max_len):
     return PREFIX + ctx_text + suffix
 
 
-
-def make_context_text(text, target_tokens, tokenizer):
-    # tokenize and trim to target token budget
-    ids = tokenizer.encode(text, add_special_tokens=False)
-    if len(ids) > target_tokens:
-        ids = ids[:target_tokens]
-        text = tokenizer.decode(ids, skip_special_tokens=True)
-    return text
 
 def percentile(values, p):
     if not values: return float("nan")
@@ -125,9 +127,6 @@ def normalize_answer(s: str) -> str:
     def white_space_fix(text): return " ".join(text.split())
     return white_space_fix(remove_articles(remove_punc(lower(s))))
 
-def exact_match(pred: str, golds) -> bool:
-    p = normalize_answer(pred)
-    return any(p == normalize_answer(g) for g in golds)
 
 # --- TTFT measurer ---
 class FirstTokenTimer(StoppingCriteria):
@@ -199,7 +198,7 @@ def load_narrativeqa_examples(n):
 
 
 def main():
-        # Logging setup
+    # Logging setup
     os.makedirs(LOGDIR, exist_ok=True)
     ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     model_name_tag = MODEL_ID.split("/")[-1]
@@ -211,7 +210,6 @@ def main():
         load_kwargs["attn_implementation"] = "flash_attention_2"
     elif ATTN_IMPL == "sdpa":
         attn_label = "sdpa"
-        # Use vanilla PyTorch math backend (not flash or mem-efficient)
         torch.backends.cuda.enable_flash_sdp(False)
         torch.backends.cuda.enable_mem_efficient_sdp(False)
         torch.backends.cuda.enable_math_sdp(True)
@@ -231,7 +229,6 @@ def main():
         raise ValueError(f"Unknown ATTN_IMPL: {ATTN_IMPL}")
 
     if QUANT_MODE == "none":
-        # Your current baseline
         load_kwargs["torch_dtype"] = DTYPE
 
     elif QUANT_MODE == "bnb8":
@@ -239,8 +236,6 @@ def main():
         load_kwargs["quantization_config"] = BitsAndBytesConfig(
             load_in_8bit=True,
             llm_int8_threshold=LLM_INT8_THRESHOLD,
-            # optional knobs you can add later if you want:
-            # llm_int8_enable_fp32_cpu_offload=False,
         )
 
     elif QUANT_MODE == "bnb4":
@@ -311,12 +306,10 @@ def main():
     all_rows = []
     ctx_summaries = []
     oom_count = 0
-    em_hits = 0  # can delete if you drop EM entirely
 
     all_rows = []
     ctx_summaries = []
     oom_count = 0
-    em_hits = 0
     
     for ctx_len in CONTEXTS:
         per_req_lat, per_tok_lat, per_req_tokps, per_req_peak = [], [], [], []
@@ -335,8 +328,6 @@ def main():
             golds_list = []
             for (q, sentences, golds) in batch:
                 # breakpoint()
-                # context_text = make_context_text(sentences, ctx_len, tok)
-                # prompts.append(format_prompt(q['text'], context_text))
                 prompt = build_prompt(q["text"], sentences, tok, ctx_len)
                 prompts.append(prompt)
                 golds_list.append(golds)
@@ -420,10 +411,10 @@ def main():
                 for j, golds in enumerate(golds_list):
                     pred = (
                         texts[j]
-                        .split("Answer:", 1)[-1]   # take text after "Answer:"
+                        .split("Answer:", 1)[-1] # take text after "Answer:"
                         .strip()
-                        .split("\n", 1)[0]         # first line
-                        .split(".")[0]             # optionally strip trailing sentence
+                        .split("\n", 1)[0] # first line
+                        .split(".")[0] # optionally strip trailing sentence
                         .strip()
                     )
                     ctx_preds.append(pred)
@@ -529,7 +520,7 @@ def main():
 
         wandb.log(
             {
-                "context_tokens": ctx_len,  # x-axis if you want
+                "context_tokens": ctx_len,
                 "quality/meteor": meteor_score,
                 "quality/rouge1": rouge1,
                 "quality/rougeL": rougeL,
@@ -557,8 +548,6 @@ def main():
         for j in range(min(3, len(nq_examples))):
             q, context_text, golds = nq_examples[j]
             # breakpoint()
-            # ctx_trim = make_context_text(context_text, ctx_len, tok)
-            # prompt = format_prompt(q['text'], ctx_trim)
             prompt = build_prompt(q["text"], context_text, tok, ctx_len)
             inputs_1 = tok(prompt, return_tensors="pt", truncation=False).to(model.device)
 
