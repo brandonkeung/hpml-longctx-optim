@@ -190,7 +190,7 @@ python hotpotqa_eval.py
 
 #### 8. FlexAttention (PyTorch 2.5+)
 ```bash
-cd "[Jiaheng]]FlexAttention"
+cd "flex-pipeline"
 MASK_FN="sliding" N_SAMPLES=100 python longbench_gpt-fast.py
 ```
 
