@@ -48,26 +48,27 @@ L2-norm based compression that:
 ```
 hpml-longctx-optim/
 ├── narrativeqa_eval.py          # NarrativeQA evaluation (main benchmark)
-├── hotpotqa_eval.py             # HotpotQA multi-hop QA evaluation
-├── longbench_eval.py            # LongBench-v2 multiple choice evaluation
 ├── longbench_kv_eval.py         # LongBench with KV compression support
 │
 ├── kv_compression/              # KV Cache Compression Module
 │   ├── cache.py                 # L2-norm based cache pruning
 │   └── kv_l2_dynamic.py         # Generation loop with compression
 │
-├── [Jiaheng]]FlexAttention/     # FlexAttention experiments
+├── flex-pipeline/               # FlexAttention experiments
 │   ├── hotpot_qa_flex.py        # HotpotQA with FlexAttention patching
 │   ├── benchmark_cmd.py         # Benchmark command utilities
 │   └── logs/                    # FlexAttention experiment logs
 │
-├── plot_narrativeqa_tokens.py   # Token distribution analysis
-├── plot_longbench_tokens.py     # LongBench token analysis
-├── count_tokens.py              # Token counting utilities
+├── context_histograms/          # Token-counting + histogram utilities and outputs
+│   ├── plot_narrativeqa_tokens.py   # Token distribution analysis
+│   ├── plot_longbench_tokens.py     # LongBench token analysis
+│   ├── count_tokens.py              # Token counting utilities
+│   └── plots/                       # Generated visualizations
+│       ├── narrativeqa_*_token_hist.png
+│       └── longbench_*_token_hist.png
 │
-├── plots/                       # Generated visualizations
-│   ├── narrativeqa_*_token_hist.png
-│   └── longbench_*_token_hist.png
+├── assets/                      # Rendered result PNGs used in the README
+│   └── *.png
 │
 ├── logs/                        # Experiment logs (JSON/JSONL)
 │   ├── narrativeqa/
@@ -75,6 +76,7 @@ hpml-longctx-optim/
 │
 ├── requirements.txt             # Python dependencies
 └── README.md                    # This file
+
 ```
 
 ---
