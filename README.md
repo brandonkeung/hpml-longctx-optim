@@ -55,9 +55,9 @@ hpml-longctx-optim/
 │   └── kv_l2_dynamic.py         # Generation loop with compression
 │
 ├── flex-pipeline/               # FlexAttention experiments
-│   ├── hotpot_qa_flex.py        # HotpotQA with FlexAttention patching
-│   ├── benchmark_cmd.py         # Benchmark command utilities
-│   └── logs/                    # FlexAttention experiment logs
+│   ├── Longbench_gpt-fast.py    # Longbench with FlexAttention patching
+│   ├── *.py                     # GPT-fast source code
+│   └── scripts/                 # Scripts for model downloading and preparation
 │
 ├── context_histograms/          # Token-counting + histogram utilities and outputs
 │   ├── plot_narrativeqa_tokens.py   # Token distribution analysis
@@ -191,7 +191,7 @@ python hotpotqa_eval.py
 #### 8. FlexAttention (PyTorch 2.5+)
 ```bash
 cd "[Jiaheng]]FlexAttention"
-ATTN_IMPL=flex N_SAMPLES=50 python hotpot_qa_flex.py
+MASK_FN="sliding" N_SAMPLES=100 python longbench_gpt-fast.py
 ```
 
 ---
@@ -318,15 +318,8 @@ def generate_with_l2_compress(model, tokenizer, inputs, max_new_tokens=20,
 
 ### FlexAttention Patching
 
-#### `[Jiaheng]]FlexAttention/hotpot_qa_flex.py`
-```python
-def enable_flex_attention_dense_causal(model):
-    """
-    Monkey-patch model's attention layers to use PyTorch FlexAttention.
-    Supports MHA, MQA, and GQA architectures.
-    """
-```
-
+#### `flex-pipeline/longbench_gpt-fast.py`
+Benchmarking pipeline ntegrating LongBench evaluation with GPT-Fast, a PyTorch-native transformer inference framework. The pipeline replaces the standard AutoModelForCausalLM generation path with an explicit prefill and token-by-token decoding loop that exposes attention masking as a configurable input. This design enables systematic benchmarking of alternative attention patterns (e.g., sliding-window, block-local, prefix-LM) under identical decoding and KV-cache settings. 
 ---
 
 
